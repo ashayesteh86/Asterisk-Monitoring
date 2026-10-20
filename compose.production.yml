@@ -1,0 +1,32 @@
+name: asterisk-panel
+services:
+  app:
+    build: .
+    image: asterisk-panel:production
+    container_name: asterisk-panel
+    restart: unless-stopped
+    env_file: ${PANEL_ENV_FILE:-./panel.env}
+    environment:
+      DATABASE_URL: postgres://asterisk_panel:${POSTGRES_PASSWORD}@db:5432/asterisk_panel
+      PORT: 3400
+    ports:
+      - "${PANEL_PORT:-3400}:3400"
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:16-alpine
+    container_name: asterisk-panel-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: asterisk_panel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: asterisk_panel
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asterisk_panel"]
+      interval: 5s
+      retries: 20
+volumes:
+  pg:
