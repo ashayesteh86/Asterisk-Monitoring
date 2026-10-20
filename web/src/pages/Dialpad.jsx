@@ -1,7 +1,7 @@
 // Web dial pad: originate from the user's extension, live state of that extension, recent numbers, phonebook suggestions.
 import { useEffect, useMemo, useState } from "react";
 import { useLive, useNow } from "../live.js";
-import { useSession, useDial, hasRole } from "../session.jsx";
+import { useSession, useDial, inScope } from "../session.jsx";
 import { buildExtensions, otherParty, STATUS } from "../pbxview.js";
 import { api } from "../api.js";
 import { fa, toLatinDigits, dur } from "../jalali.js";
@@ -23,9 +23,9 @@ export default function Dialpad() {
   const [from, setFrom] = useState(me.user.extension || "");
   const [recent, setRecent] = useState(loadRecent);
   const [suggest, setSuggest] = useState([]);
-  const exts = useMemo(() => buildExtensions(peers, channels), [peers, channels]);
+  const exts = useMemo(() => buildExtensions(peers, channels).filter((e) => inScope(me.user, "dial", e.name)), [peers, channels, me.user]);
   const mine = exts.find((e) => e.name === from);
-  const canPickFrom = hasRole(me.user, "supervisor");
+  const canPickFrom = exts.some((e) => e.name !== me.user.extension);
 
   useEffect(() => {
     const h = (e) => {

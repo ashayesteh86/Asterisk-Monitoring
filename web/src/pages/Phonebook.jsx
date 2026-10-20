@@ -1,7 +1,7 @@
 // Shared / personal phonebook with click-to-dial, groups, favourites and CSV import/export.
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import { useSession, useDial } from "../session.jsx";
+import { useSession, useDial, can } from "../session.jsx";
 import { fa, faNum } from "../jalali.js";
 import { Icon, Modal, Empty, Field, Spinner, useToast } from "../components/ui.jsx";
 
@@ -47,7 +47,7 @@ export default function Phonebook() {
     } catch (e) { toast(e.message, "error"); }
     file.current.value = "";
   };
-  const canEdit = (c) => c.owner_id === me.user.id || me.user.role !== "operator";
+  const canEdit = (c) => c.owner_id === me.user.id || can(me.user, "phonebook.edit_shared");
 
   return (
     <div className="space-y-4">
@@ -90,7 +90,7 @@ export default function Phonebook() {
                   <td>
                     <div className="flex flex-wrap gap-1.5">
                       {c.phones.map((p, i) => (
-                        <button key={i} onClick={() => dial(p.number, c.name)} title={`تماس از داخلی ${me.user.extension || "—"}`}
+                        <button key={i} onClick={() => can(me.user, "dialpad.use") && dial(p.number, c.name)} title={`تماس از داخلی ${me.user.extension || "—"}`}
                           className="group flex items-center gap-1.5 rounded-lg border border-line px-2 py-1 text-xs hover:border-idle hover:bg-idle-soft">
                           <Icon name="phone" className="size-3.5 text-idle" />
                           <span className="num ltr">{fa(p.number)}</span>

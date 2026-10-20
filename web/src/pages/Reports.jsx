@@ -1,7 +1,7 @@
 // CDR reports with Shamsi (Jalali) date ranges: summary, daily/hourly charts, call list, per-extension, CSV export.
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
-import { useSession, useDial } from "../session.jsx";
+import { useSession, useDial, can } from "../session.jsx";
 import { useLive } from "../live.js";
 import { fa, faNum, dur, durLong, jOf, fromJ, jString, parseJ, jFromSql, sqlDate, MONTHS, jalaaliMonthLength } from "../jalali.js";
 import { Icon, Tabs, Empty, Spinner, useToast } from "../components/ui.jsx";
@@ -74,7 +74,7 @@ export default function Reports() {
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-bold">گزارش تماس‌ها</h1>
         <div className="flex-1" />
-        <a className="btn btn-sm" href={`/api/cdr/export.csv?${query()}`}><Icon name="download" className="size-4" />خروجی Excel (CSV)</a>
+        {can(me.user, "reports.export") && <a className="btn btn-sm" href={`/api/cdr/export.csv?${query()}`}><Icon name="download" className="size-4" />خروجی Excel (CSV)</a>}
       </div>
 
       <div className="card space-y-3 p-4">
@@ -94,7 +94,7 @@ export default function Reports() {
           <div><span className="label">وضعیت</span>
             <select className="input" value={f.disposition} onChange={set("disposition")}><option value="">همه</option>{Object.entries(DISP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></div>
           <div><span className="label">شماره</span><input className="input num ltr text-left" value={f.number} onChange={set("number")} placeholder="0912…" /></div>
-          {me.user.role === "operator" ? (
+          {me.user.scopes?.reports?.mode === "self" && !me.user.isAdmin ? (
             <div><span className="label">داخلی</span><input className="input num" disabled value={fa(me.user.extension)} /></div>
           ) : (
             <div><span className="label">داخلی (با , جدا کنید)</span><input className="input num ltr text-left" value={f.extension} onChange={set("extension")} placeholder="101,102" /></div>
@@ -113,7 +113,7 @@ export default function Reports() {
         { id: "ext", label: "بر اساس داخلی", icon: "users" },
       ]} />
 
-      {err ? <div className="card"><Empty icon="alert" title="گزارش بارگذاری نشد">{err}{me.user.role === "admin" && " — اتصال دیتابیس CDR را در تنظیمات بررسی کنید."}</Empty></div>
+      {err ? <div className="card"><Empty icon="alert" title="گزارش بارگذاری نشد">{err}{can(me.user, "settings.manage") && " — اتصال دیتابیس CDR را در تنظیمات بررسی کنید."}</Empty></div>
         : tab === "list" ? <CallList data={list} page={page} setPage={setPage} pageSize={PAGE} />
         : !stats ? <div className="card p-12 text-center"><Spinner /></div>
         : tab === "summary" ? <Summary stats={stats} applied={applied} /> : <ByExtension stats={stats} />}

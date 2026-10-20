@@ -28,7 +28,7 @@ export default function BarChart({ data, series, height = 220, format = faNum, l
 
   return (
     <div className="relative" ref={box}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} role="img"
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height, direction: "ltr" }} role="img"
         onMouseLeave={() => setHover(null)}>
         {ticks.map((t) => (
           <g key={t}>

@@ -22,7 +22,8 @@ export default function LineChart({ points, series, height = 240, xLabel, toolti
   const y = (v) => padT + ih - (v / top) * ih;
   const ticks = [];
   for (let v = 0; v <= top; v += step) ticks.push(v);
-  const xTicks = points.length > 1 ? Array.from({ length: Math.max(2, Math.min(7, Math.floor(W / 110))) }, (_, i, a) => t0 + ((t1 - t0) * i) / (a.length - 1)) : [];
+  const nTicks = Math.max(2, Math.min(7, Math.floor(W / 110)));
+  const xTicks = points.length > 1 ? Array.from({ length: nTicks }, (_, i) => t0 + ((t1 - t0) * i) / (nTicks - 1)) : [];
 
   const onMove = (e) => {
     if (points.length < 2) return;
@@ -40,7 +41,7 @@ export default function LineChart({ points, series, height = 240, xLabel, toolti
       {points.length < 2 ? (
         <div className="flex items-center justify-center text-sm text-ink-3" style={{ height }}>هنوز داده کافی جمع‌آوری نشده — هر ۱۰ ثانیه یک نمونه ثبت می‌شود</div>
       ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} onMouseMove={onMove} onMouseLeave={() => setHover(null)} role="img">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height, direction: "ltr" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)} role="img">
           {ticks.map((t) => (
             <g key={t}>
               <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--grid)" />

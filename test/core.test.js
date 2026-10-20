@@ -84,3 +84,31 @@ test("Pbx: Asterisk 13+ BridgeEnter/Hold, PeerStatus", () => {
   p.onEvent({ Event: "BridgeLeave", BridgeUniqueid: "x", Channel: "PJSIP/tr-b" });
   assert.deepEqual(p.channels.get("PJSIP/101-a").bridged, []);
 });
+
+import { inScope, cleanGroup } from "../server/access.js";
+import { matchDialplan, checkDialplanList } from "../server/util.js";
+
+test("dialplan patterns", () => {
+  assert.ok(matchDialplan("_1XX", "150"));
+  assert.ok(!matchDialplan("_1XX", "1500"));
+  assert.ok(matchDialplan("_XXX, _NXXX", "2001"));
+  assert.ok(matchDialplan("_[1-3]XX", "299"));
+  assert.ok(!matchDialplan("_[1-3]XX", "499"));
+  assert.ok(matchDialplan("_9.", "9021"));
+  assert.throws(() => checkDialplanList("_1[2"));
+});
+
+test("access scopes", () => {
+  const u = (scopes, extension = "104") => ({ isAdmin: false, extension, perms: [], scopes });
+  assert.ok(inScope(u({ panel: { mode: "list", list: "101-103, _2XX" } }), "panel", "102"));
+  assert.ok(inScope(u({ panel: { mode: "list", list: "101-103, _2XX" } }), "panel", "250"));
+  assert.ok(!inScope(u({ panel: { mode: "list", list: "101-103, _2XX" } }), "panel", "104"));
+  assert.ok(!inScope(u({ panel: { mode: "except", list: "_10X" } }), "panel", "105"));
+  assert.ok(inScope(u({ calls: { mode: "self" } }), "calls", "104"));
+  assert.ok(!inScope(u({ calls: { mode: "self" } }), "calls", "105"));
+  assert.ok(inScope(u({ dial: { mode: "none" } }), "dial", "104"), "own extension always allowed for dialing");
+  assert.ok(!inScope(u({ spy: { mode: "none" } }), "spy", "104"));
+  assert.ok(inScope({ isAdmin: true }, "spy", "999"));
+  assert.throws(() => cleanGroup({ name: "x", scopes: { panel: { mode: "list", list: "" } } }));
+  assert.deepEqual(cleanGroup({ name: "x", permissions: ["panel.view", "bogus"] }).permissions, ["panel.view"]);
+});

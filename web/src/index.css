@@ -107,7 +107,7 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .label { display: block; font-size: .8rem; color: var(--ink-2); margin-bottom: .3rem; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: .9rem; }
-.chip { display: inline-flex; align-items: center; gap: .3rem; border-radius: 999px; padding: .1rem .55rem; font-size: .72rem; font-weight: 500; }
+.chip { display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; border-radius: 999px; padding: .1rem .55rem; font-size: .72rem; font-weight: 500; }
 table.grid-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 table.grid-table th { text-align: right; font-weight: 500; color: var(--ink-3); font-size: .78rem; padding: .55rem .7rem; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--surface); position: sticky; top: 0; z-index: 1; }
 table.grid-table td { padding: .55rem .7rem; border-bottom: 1px solid var(--line); vertical-align: middle; }

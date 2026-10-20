@@ -103,7 +103,7 @@ export class QueueMonitor extends EventEmitter {
       const queues = [...map.values()].filter((q) => q.name !== "default").sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
       for (const q of queues) {
         q.entries.sort((a, b) => a.position - b.position);
-        q.today = this.dayStats(q.name);
+        q.today = structuredClone(this.dayStats(q.name));
       }
       if (JSON.stringify(stripTimes(queues)) !== JSON.stringify(stripTimes(this.queues))) {
         this.queues = queues;

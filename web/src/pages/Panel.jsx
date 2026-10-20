@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useLive, useNow } from "../live.js";
 import { buildExtensions, buildCalls, channelStatus, otherParty, STATUS } from "../pbxview.js";
-import { useSession, useDial, hasRole } from "../session.jsx";
+import { useSession, useDial, can, inScope, callInScope } from "../session.jsx";
 import { api } from "../api.js";
 import { fa, faNum, dur } from "../jalali.js";
 import { Icon, Modal, Empty, useToast, Field } from "../components/ui.jsx";
@@ -39,8 +39,8 @@ export default function Panel() {
   const [selected, setSelected] = useState(null);
   const [dragOver, setDragOver] = useState(null);
 
-  const exts = useMemo(() => buildExtensions(peers, channels), [peers, channels]);
-  const calls = useMemo(() => buildCalls(peers, channels, me.dial.hideLocal), [peers, channels, me.dial.hideLocal]);
+  const exts = useMemo(() => buildExtensions(peers, channels).filter((e) => inScope(me.user, "panel", e.name)), [peers, channels, me.user]);
+  const calls = useMemo(() => buildCalls(peers, channels, me.dial.hideLocal).filter((c) => callInScope(me.user, "calls", c.exts.map((e) => e.peer))), [peers, channels, me.dial.hideLocal, me.user]);
   const trunks = useMemo(() => Object.values(peers).filter((p) => p.kind === "trunk"), [peers]);
 
   const counts = useMemo(() => {
@@ -90,7 +90,7 @@ export default function Panel() {
         <Stat label="در حال زنگ" value={counts.ringing} tone="ring" icon="phoneIn" />
         <Stat label="خاموش / ثبت نشده" value={counts.offline} tone="off" icon="wifi" />
         <Stat label="تماس‌های فعال" value={calls.length} sub={`${faNum(callCounts.inbound)} ورودی · ${faNum(callCounts.outbound)} خروجی · ${faNum(callCounts.internal)} داخلی`} icon="pulse" />
-        <Stat label="ترانک‌ها" value={`${faNum(trunks.filter((t) => t.status === "online" || t.status === "unmonitored").length)}/${faNum(trunks.length)}`} sub={dahdi.length ? `E1: ${faNum(dahdiBusy)} از ${faNum(dahdi.length)} کانال مشغول` : "فعال / کل"} icon="trunk" />
+        {can(me.user, "trunks.view") && <Stat label="ترانک‌ها" value={`${faNum(trunks.filter((t) => t.status === "online" || t.status === "unmonitored").length)}/${faNum(trunks.length)}`} sub={dahdi.length ? `E1: ${faNum(dahdiBusy)} از ${faNum(dahdi.length)} کانال مشغول` : "فعال / کل"} icon="trunk" />}
       </div>
 
       <div className="flex flex-col gap-5 2xl:flex-row">
@@ -117,7 +117,7 @@ export default function Panel() {
           ) : (
             <div className={`grid gap-2.5 ${compact ? "grid-cols-[repeat(auto-fill,minmax(150px,1fr))]" : "grid-cols-[repeat(auto-fill,minmax(225px,1fr))]"}`}>
               {shown.map((e) => (
-                <ExtCard key={e.name} ext={e} compact={compact} channels={channels} peers={peers} lookup={lookup}
+                <ExtCard key={e.name} ext={e} compact={compact} canMove={can(me.user, "calls.transfer") && inScope(me.user, "calls", e.name)} channels={channels} peers={peers} lookup={lookup}
                   onOpen={() => setSelected(e.name)} dragOver={dragOver === e.name}
                   onDragOver={(ev) => { if (ev.dataTransfer.types.includes("text/ext") && e.status !== "offline") { ev.preventDefault(); setDragOver(e.name); } }}
                   onDragLeave={() => setDragOver(null)}
@@ -125,7 +125,7 @@ export default function Panel() {
               ))}
             </div>
           )}
-          {exts.length > 0 && <p className="mt-3 text-xs text-ink-3">راهنما: برای انتقال تماس، کارت داخلیِ در حال مکالمه را بکشید و روی داخلی مقصد رها کنید.</p>}
+          {exts.length > 0 && can(me.user, "calls.transfer") && <p className="mt-3 text-xs text-ink-3">راهنما: برای انتقال تماس، کارت داخلیِ در حال مکالمه را بکشید و روی داخلی مقصد رها کنید.</p>}
         </section>
 
         <aside className="w-full shrink-0 2xl:w-96">
@@ -160,12 +160,12 @@ function Stat({ label, value, sub, tone, icon }) {
   );
 }
 
-function ExtCard({ ext, compact, channels, peers, lookup, onOpen, dragOver, onDragOver, onDragLeave, onDrop }) {
+function ExtCard({ ext, compact, channels, peers, lookup, onOpen, dragOver, onDragOver, onDragLeave, onDrop, canMove }) {
   const s = STATUS[ext.status] || STATUS.idle;
   const call = ext.calls[0];
   const other = call && otherParty(call, channels, peers);
   const otherName = other && (lookup(other.number) || other.name);
-  const draggable = ext.calls.some((c) => c.state === 6 && c.bridged?.length);
+  const draggable = canMove && ext.calls.some((c) => c.state === 6 && c.bridged?.length);
   const off = ext.status === "offline" || ext.status === "unreachable";
   const ring = `border-${s.color}`;
   return (
@@ -257,7 +257,9 @@ function ExtDetail({ ext, onClose, channels, peers, lookup }) {
   const dial = useDial();
   const toast = useToast();
   const [target, setTarget] = useState("");
-  const supervisor = hasRole(me.user, "supervisor");
+  const spyOk = can(me.user, "calls.spy") && inScope(me.user, "spy", ext.name);
+  const hangOk = can(me.user, "calls.hangup") && inScope(me.user, "calls", ext.name);
+  const moveOk = can(me.user, "calls.transfer") && inScope(me.user, "calls", ext.name);
   const act = async (path, body, okText) => {
     try { await api(path, { method: "POST", body }); toast(okText); } catch (e) { toast(e.message, "error"); }
   };
@@ -277,7 +279,7 @@ function ExtDetail({ ext, onClose, channels, peers, lookup }) {
         <div className="flex flex-col items-center gap-2 md:w-40">
           <PhoneIcon phone={ext.phone} status={ext.status} className="size-24" />
           <div className="text-center text-sm font-medium ltr">{ext.phone.vendor || "—"}</div>
-          {me.user.extension && me.user.extension !== ext.name && ext.status !== "offline" && (
+          {can(me.user, "dialpad.use") && me.user.extension && me.user.extension !== ext.name && ext.status !== "offline" && (
             <button className="btn btn-primary btn-sm mt-1" onClick={() => dial(ext.name, ext.callerName || ext.name)}><Icon name="phone" className="size-4" />تماس با این داخلی</button>
           )}
         </div>
@@ -305,16 +307,16 @@ function ExtDetail({ ext, onClose, channels, peers, lookup }) {
               </div>
               <div className="mt-1 text-[11px] text-ink-3 ltr text-right">{c.name}{remote ? ` ⇄ ${remote}` : ""}</div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {supervisor && c.state === 6 && c.app !== "ChanSpy" && (
+                {spyOk && c.state === 6 && c.app !== "ChanSpy" && (
                   <>
                     <button className="btn btn-sm" onClick={() => act("/api/calls/spy", { channel: c.name, mode: "listen" }, `شنود: ابتدا داخلی ${fa(me.user.extension)} زنگ می‌خورد`)}><Icon name="ear" className="size-4" />شنود</button>
                     <button className="btn btn-sm" onClick={() => act("/api/calls/spy", { channel: c.name, mode: "whisper" }, "نجوا (فقط داخلی صدای شما را می‌شنود)")}><Icon name="whisper" className="size-4" />نجوا</button>
                     <button className="btn btn-sm" onClick={() => act("/api/calls/spy", { channel: c.name, mode: "barge" }, "ورود به مکالمه (سه‌طرفه)")}><Icon name="barge" className="size-4" />ورود به مکالمه</button>
                   </>
                 )}
-                {supervisor && <button className="btn btn-sm btn-danger" onClick={() => act("/api/calls/hangup", { channel: c.name }, "تماس قطع شد")}><Icon name="hangup" className="size-4" />قطع</button>}
+                {hangOk && <button className="btn btn-sm btn-danger" onClick={() => act("/api/calls/hangup", { channel: c.name }, "تماس قطع شد")}><Icon name="hangup" className="size-4" />قطع</button>}
               </div>
-              {remote && c.state === 6 && (supervisor || ext.name === me.user.extension) && (
+              {remote && c.state === 6 && moveOk && (
                 <form className="mt-3 flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); act("/api/calls/transfer", { channel: remote, target }, `منتقل شد به ${fa(target)}`); }}>
                   <Field label="انتقال طرف مقابل به" className="flex-1"><input className="input num ltr text-left" placeholder="مثلاً 105" value={target} onChange={(e) => setTarget(e.target.value.replace(/[^\d*#]/g, ""))} /></Field>
                   <button className="btn" disabled={!target}><Icon name="transfer" className="size-4" />انتقال</button>
@@ -324,8 +326,8 @@ function ExtDetail({ ext, onClose, channels, peers, lookup }) {
           );
         })}
       </div>
-      {supervisor && !me.user.extension && <p className="mt-4 text-xs text-ring">برای شنود، داخلی شما باید در پروفایل کاربری ثبت شده باشد.</p>}
-      {supervisor && <p className="mt-3 text-xs text-ink-3">در حین شنود با کلیدهای ۴ (شنود)، ۵ (نجوا) و ۶ (ورود به مکالمه) روی گوشی می‌توانید حالت را عوض کنید. همه عملیات شنود در گزارش رخدادها ثبت می‌شود.</p>}
+      {spyOk && !me.user.extension && <p className="mt-4 text-xs text-ring">برای شنود، داخلی شما باید در پروفایل کاربری ثبت شده باشد.</p>}
+      {spyOk && <p className="mt-3 text-xs text-ink-3">در حین شنود با کلیدهای ۴ (شنود)، ۵ (نجوا) و ۶ (ورود به مکالمه) روی گوشی می‌توانید حالت را عوض کنید. همه عملیات شنود در گزارش رخدادها ثبت می‌شود.</p>}
     </Modal>
   );
 }

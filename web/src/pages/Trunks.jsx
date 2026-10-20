@@ -1,7 +1,7 @@
 // Trunk monitoring (status, latency, registration, live calls, E1 channels) and panel-managed chan_sip trunks.
 import { useEffect, useMemo, useState } from "react";
 import { useLive } from "../live.js";
-import { useSession, hasRole } from "../session.jsx";
+import { useSession, can } from "../session.jsx";
 import { api } from "../api.js";
 import { fa, faNum, jFromSql, sqlDate } from "../jalali.js";
 import { Icon, Modal, Empty, Field, Spinner, useToast } from "../components/ui.jsx";
@@ -20,7 +20,7 @@ export default function Trunks() {
   const dahdi = useLive((s) => s.dahdi);
   const { me } = useSession();
   const toast = useToast();
-  const admin = hasRole(me.user, "admin");
+  const admin = can(me.user, "trunks.manage");
   const [config, setConfig] = useState(null);
   const [edit, setEdit] = useState(null);
   const [backups, setBackups] = useState(null);
@@ -81,7 +81,7 @@ export default function Trunks() {
                     <td className="num font-medium">{faNum(activeBy[t.name] || 0)}</td>
                     <td>{panelNames.has(t.name) ? <span className="chip bg-accent-soft text-accent">پنل</span> : <span className="chip bg-surface-2 text-ink-3">ایزابل</span>}</td>
                     <td className="whitespace-nowrap text-left">
-                      {hasRole(me.user, "supervisor") && <button className="btn btn-sm" onClick={() => qualify(t.name)}>Qualify</button>}
+                      {can(me.user, "trunks.view") && <button className="btn btn-sm" onClick={() => qualify(t.name)}>Qualify</button>}
                       {admin && panelNames.has(t.name) && <button className="btn btn-sm mr-1" onClick={() => setEdit({ ...structuredClone(config.trunks.find((x) => x.name === t.name)), originalName: t.name })}><Icon name="edit" className="size-4" /></button>}
                     </td>
                   </tr>

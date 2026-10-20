@@ -147,7 +147,7 @@ function Live({ label, value, icon, tone, big, to }) {
     <div className={`card flex h-full items-start gap-3 p-3.5 ${to ? "transition hover:shadow-md" : ""}`}>
       <div className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${tone === "accent" || !tone ? "bg-accent-soft text-accent" : `bg-${tone}-soft text-${tone}`}`}><Icon name={icon} className="size-[18px]" /></div>
       <div className="min-w-0">
-        <div className="truncate text-xs text-ink-3">{label}</div>
+        <div className="text-xs leading-4 text-ink-3">{label}</div>
         <div className={`num font-bold ${big ? "text-2xl" : "text-xl"}`}>{typeof value === "number" ? faNum(value) : value}</div>
       </div>
     </div>
@@ -158,7 +158,7 @@ function Live({ label, value, icon, tone, big, to }) {
 const Mini = ({ label, value, sub, tone }) => (
   <div className="rounded-xl bg-surface-2 p-3">
     <div className="text-xs text-ink-3">{label}</div>
-    <div className={`num text-lg font-bold ${tone ? `text-${tone}` : ""}`}>{value}</div>
+    <div className={`num font-bold ${String(value).length > 12 ? "text-sm leading-6" : "text-lg"} ${tone ? `text-${tone}` : ""}`}>{value}</div>
     {sub && <div className="text-[11px] text-ink-3">{sub}</div>}
   </div>
 );
@@ -176,7 +176,7 @@ export function Meter({ label, pct, detail, warn = 75, danger = 90 }) {
 
 export const bytes = (n) => {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  const u = ["B", "KB", "MB", "GB", "TB"];
+  const u = ["بایت", "کیلوبایت", "مگابایت", "گیگابایت", "ترابایت"];
   let i = 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return fa(`${n.toFixed(n >= 100 || i === 0 ? 0 : 1)} ${u[i]}`);

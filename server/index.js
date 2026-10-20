@@ -544,7 +544,7 @@ app.post("/api/queues/remove", requirePerm("queues.manage"), wrap((req, res) => 
 }));
 
 // ---------- server status ----------
-app.get("/api/system", requirePerm("system.view", "dashboard.view"), wrap(async (req, res) => {
+app.get("/api/system", requirePerm("system.view"), wrap(async (req, res) => {
   if (req.query.refresh === "1" || !system.latest) await system.sample().catch(() => {});
   res.json({ latest: system.latest, history: req.query.history === "0" ? [] : system.history });
 }));

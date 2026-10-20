@@ -70,7 +70,7 @@ export default function Calls() {
           <input className="input pr-9" placeholder="جستجوی شماره، داخلی، نام…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <select className="input w-auto" value={dir} onChange={(e) => setDir(e.target.value)}><option value="">همه جهت‌ها</option><option value="inbound">ورودی</option><option value="outbound">خروجی</option><option value="internal">داخلی</option></select>
-        <select className="input w-auto" value={state} onChange={(e) => setState(e.target.value)}><option value="">همه وضعیت‌ها</option><option value="talking">در حال مکالمه</option><option value="ringing">در حال زنگ</option><option value="hold">انتظار</option></select>
+        <select className="input w-auto" value={state} onChange={(e) => setState(e.target.value)}><option value="">همه وضعیت‌ها</option><option value="talking">در حال مکالمه</option><option value="ringing">در حال زنگ</option><option value="hold">انتظار</option><option value="queued">در صف</option></select>
       </div>
 
       <div className="card overflow-x-auto">
@@ -104,7 +104,7 @@ export default function Calls() {
                     </td>
                     <td className="text-xs text-ink-2 ltr text-right">{c.trunk ? (c.trunk.tech === "DAHDI" ? "E1 / DAHDI" : c.trunk.peer) : "—"}{c.channels.some((x) => x.app === "Queue") ? " · Queue" : ""}</td>
                     <td><span className={`chip bg-${st.color}-soft text-${st.color}`}>{st.label}</span></td>
-                    <td className="num font-semibold">{c.answeredAt ? dur((now - c.answeredAt) / 1000) : "—"}</td>
+                    <td className="num font-semibold">{c.answeredAt && c.status !== "queued" ? dur((now - c.answeredAt) / 1000) : "—"}</td>
                     <td className="num text-ink-3">{dur((now - c.startedAt) / 1000)}</td>
                     <td className="whitespace-nowrap text-left">
                       {spyOk && Object.entries(SPY).map(([m, s]) => (
