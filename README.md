@@ -34,7 +34,7 @@
    write = system,call,agent,user,config,command,reporting,originate
    ```
    سپس `asterisk -rx "manager reload"`. پورت ۵۰۳۸ را فقط برای IP پنل باز کنید.
-2. کاربر فقط‌خواندنی CDR در MariaDB ایزابل:
+2. کاربر فقط‌خواندنی CDR در MariaDB ایزابل. اگر نمی‌خواهید پورت ۳۳۰۶ را باز کنید، در «تنظیمات › دیتابیس CDR» نوع اتصال را **از طریق SSH** بگذارید؛ پنل از همان کاربر SSH «مانیتورینگ سرور» تونل می‌زند و کاربر MySQL را برای `localhost` و `127.0.0.1` بسازید (مرحله `bind-address`/فایروال لازم نیست). در حالت مستقیم:
    ```sql
    CREATE USER 'panel'@'192.168.81.29' IDENTIFIED BY 'رمز';
    GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'192.168.81.29';

@@ -122,7 +122,7 @@ export function decrypt(value) {
 // ---------- settings ----------
 export const DEFAULTS = {
   ami: { host: "", port: 5038, username: "", secret: "" },
-  cdr: { host: "", port: 3306, user: "", password: "", database: "asteriskcdrdb", table: "cdr" },
+  cdr: { via: "direct", host: "", port: 3306, user: "", password: "", database: "asteriskcdrdb", table: "cdr" }, // via: direct | ssh
   dial: {
     tech: "SIP",              // SIP | PJSIP | Local
     context: "from-internal",

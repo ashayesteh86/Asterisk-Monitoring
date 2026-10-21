@@ -378,6 +378,7 @@ app.put("/api/settings/:key", requirePerm("settings.manage"), wrap(async (req, r
   if (!["ami", "cdr", "dial", "system"].includes(k)) return res.status(404).json({ error: "تنظیم نامعتبر" });
   const body = { ...req.body };
   for (const f of ["status", "secretSet", "passwordSet", "sshPasswordSet", "sshKeySet"]) delete body[f];
+  if (k === "cdr" && body.via && !["direct", "ssh"].includes(body.via)) return res.status(400).json({ error: "نوع اتصال نامعتبر" });
   if (k === "system") {
     if (body.method && !["ami", "ssh", "off"].includes(body.method)) return res.status(400).json({ error: "روش نامعتبر" });
     if (body.services !== undefined && !/^[\w.|, -]*$/.test(body.services)) return res.status(400).json({ error: "نام سرویس‌ها فقط حروف انگلیسی، عدد و | ," });
@@ -390,7 +391,7 @@ app.put("/api/settings/:key", requirePerm("settings.manage"), wrap(async (req, r
   }
   await saveSettings(k, body);
   if (k === "ami") ami.configure(settings().ami);
-  if (k === "cdr") resetCdrPool();
+  if (k === "cdr" || k === "system") resetCdrPool();
   if (k === "dial") pbx.reclassify();
   if (k === "system") system.schedule();
   await audit(req, `settings:${k}`);

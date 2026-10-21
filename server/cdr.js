@@ -1,20 +1,34 @@
 // Call detail records from the Asterisk MySQL CDR database (Issabel/Elastix: asteriskcdrdb.cdr).
 import mysql from "mysql2/promise";
 import { settings } from "./db.js";
+import { SshTunnel, sshConfigFrom } from "./tunnel.js";
 
 let pool = null;
 let poolKey = "";
 let columns = null;
+let tunnel = null;
 
-function getPool() {
-  const c = settings().cdr;
-  if (!c.host || !c.user) throw Object.assign(new Error("اتصال دیتابیس CDR در تنظیمات وارد نشده است"), { status: 400 });
-  const k = JSON.stringify(c);
+/** Where mysql2 should connect: the server itself, or a local port tunnelled over SSH to it. */
+async function endpoint(c, sys, amiHost, keep) {
+  if (c.via !== "ssh") return { host: c.host, port: Number(c.port) || 3306, tunnel: null };
+  const t = new SshTunnel(sshConfigFrom(sys, amiHost), { host: c.host || "127.0.0.1", port: Number(c.port) || 3306 });
+  try {
+    await t.check();
+    const port = await t.open();
+    if (keep) tunnel = t;
+    return { host: "127.0.0.1", port, tunnel: t };
+  } catch (err) { t.close(); throw err; }
+}
+
+async function getPool() {
+  const { cdr: c, system, ami } = settings();
+  if (!c.user || (c.via !== "ssh" && !c.host)) throw Object.assign(new Error("اتصال دیتابیس CDR در تنظیمات وارد نشده است"), { status: 400 });
+  const k = JSON.stringify([c, c.via === "ssh" ? [system.sshHost, system.sshPort, system.sshUser, system.sshPassword, system.sshKey, ami.host] : null]);
   if (pool && k === poolKey) return pool;
-  pool?.end().catch(() => {});
+  resetCdrPool();
+  const ep = await endpoint(c, system, ami.host, true);
   poolKey = k;
-  columns = null;
-  pool = mysql.createPool({ host: c.host, port: Number(c.port) || 3306, user: c.user, password: c.password, database: c.database,
+  pool = mysql.createPool({ host: ep.host, port: ep.port, user: c.user, password: c.password, database: c.database,
     connectionLimit: 4, connectTimeout: 8000, dateStrings: true, charset: "utf8mb4" });
   return pool;
 }
@@ -27,22 +41,47 @@ const table = () => {
 
 async function getColumns() {
   if (columns) return columns;
-  const [rows] = await getPool().query(`SHOW COLUMNS FROM ${table()}`);
+  const [rows] = await (await getPool()).query(`SHOW COLUMNS FROM ${table()}`);
   columns = new Set(rows.map((r) => r.Field));
   return columns;
 }
 
 export async function testCdr(config) {
-  const conn = await mysql.createConnection({ host: config.host, port: Number(config.port) || 3306, user: config.user,
-    password: config.password, database: config.database, connectTimeout: 8000 });
+  const { system, ami } = settings();
+  const ep = await endpoint(config, system, ami.host, false);
+  let conn;
   try {
+    conn = await mysql.createConnection({ host: ep.host, port: ep.port, user: config.user,
+      password: config.password, database: config.database, connectTimeout: 8000, dateStrings: true });
     const t = /^[A-Za-z0-9_]+$/.test(config.table || "cdr") ? config.table || "cdr" : "cdr";
     const [rows] = await conn.query(`SELECT count(*) AS n, max(calldate) AS last FROM \`${t}\``);
     return { ok: true, count: Number(rows[0].n), last: rows[0].last };
-  } finally { await conn.end().catch(() => {}); }
+  } catch (err) {
+    const t = ep.tunnel?.lastError;
+    if (t && /Channel open failure/i.test(t)) throw new Error(`اتصال SSH برقرار شد اما سرور ایزابل نتوانست به MySQL روی ${config.host || "127.0.0.1"}:${Number(config.port) || 3306} وصل شود — آدرس و پورت MySQL یا AllowTcpForwarding را بررسی کنید`);
+    throw new Error(t ? `SSH: ${t}` : mysqlError(err));
+  } finally {
+    await conn?.end().catch(() => {});
+    ep.tunnel?.close();
+  }
 }
 
-export function resetCdrPool() { pool?.end().catch(() => {}); pool = null; poolKey = ""; columns = null; }
+/** Common MySQL failures in Persian. */
+function mysqlError(err) {
+  if (err.code === "ER_ACCESS_DENIED_ERROR") return "نام کاربری یا رمز MySQL اشتباه است، یا این کاربر از این آدرس اجازه ورود ندارد";
+  if (err.code === "ER_BAD_DB_ERROR") return "دیتابیس پیدا نشد";
+  if (err.code === "ER_NO_SUCH_TABLE") return "جدول CDR پیدا نشد";
+  if (err.code === "ECONNREFUSED") return "MySQL روی این آدرس و پورت در دسترس نیست";
+  if (err.code === "ETIMEDOUT") return "اتصال به MySQL timeout شد (پورت بسته یا فایروال)";
+  if (err.code === "PROTOCOL_CONNECTION_LOST") return "اتصال MySQL قطع شد (از طریق SSH: آدرس/پورت MySQL روی سرور را بررسی کنید)";
+  return err.message;
+}
+
+export function resetCdrPool() {
+  pool?.end().catch(() => {});
+  tunnel?.close();
+  pool = null; poolKey = ""; columns = null; tunnel = null;
+}
 
 const EXT_CH = "'^(SIP|PJSIP|IAX2)/[0-9]{2,6}-'";
 const DIRECTION_SQL = {
@@ -97,7 +136,7 @@ export async function listCdr(q) {
     .filter((c) => cols.has(c)).map((c) => "`" + c + "`").join(", ");
   const sort = q.sort === "billsec" ? "billsec" : q.sort === "duration" ? "duration" : "calldate";
   const dir = q.order === "asc" ? "ASC" : "DESC";
-  const p = getPool();
+  const p = await getPool();
   const [[rows], [[count]]] = await Promise.all([
     p.query(`SELECT ${sel} FROM ${table()} WHERE ${sql} ORDER BY ${sort} ${dir} LIMIT ? OFFSET ?`, [...args, limit, offset]),
     p.query(`SELECT count(*) AS n FROM ${table()} WHERE ${sql}`, args),
@@ -115,7 +154,7 @@ export async function listCdr(q) {
 
 export async function cdrStats(q) {
   const { sql, args } = where(q);
-  const p = getPool();
+  const p = await getPool();
   const t = table();
   const peerExpr = (col) => `SUBSTRING_INDEX(SUBSTRING_INDEX(${col}, '-', 1), '/', -1)`;
   const [[[totals]], [byDay], [byHour], [outExt], [inExt], [topNumbers]] = await Promise.all([
@@ -157,7 +196,7 @@ export async function cdrStats(q) {
 /** Rows for CSV export (max 50k). */
 export async function exportCdr(q) {
   const { sql, args } = where(q);
-  const [rows] = await getPool().query(
+  const [rows] = await (await getPool()).query(
     `SELECT calldate, src, dst, clid, channel, dstchannel, disposition, duration, billsec, uniqueid FROM ${table()}
      WHERE ${sql} ORDER BY calldate DESC LIMIT 50000`, args);
   return rows.map((r) => ({ ...r, direction: directionOf(r) }));

@@ -30,7 +30,7 @@ export default function Settings() {
       {needsSettings && !s ? <div className="p-10 text-center"><Spinner /></div> : (
         <>
           {tab === "ami" && <AmiForm value={s.ami} reload={load} />}
-          {tab === "cdr" && <CdrForm value={s.cdr} reload={load} />}
+          {tab === "cdr" && <CdrForm value={s.cdr} sshUser={s.system.sshUser} reload={load} />}
           {tab === "dial" && <DialForm value={s.dial} reload={load} />}
           {tab === "system" && <SystemForm value={s.system} amiHost={s.ami.host} reload={load} />}
           {tab === "groups" && <Groups />}
@@ -108,8 +108,8 @@ write = system,call,agent,user,config,command,reporting,originate`}</pre>
   );
 }
 
-function CdrForm({ value, reload }) {
-  const [v, , bind] = useForm({ ...value, password: "" });
+function CdrForm({ value, sshUser, reload }) {
+  const [v, , bind] = useForm({ via: "direct", ...value, password: "" });
   const [r, setR] = useState(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -122,11 +122,28 @@ function CdrForm({ value, reload }) {
   const save = async () => {
     try { await api("/api/settings/cdr", { method: "PUT", body: v }); toast("ذخیره شد"); reload(); } catch (e) { toast(e.message, "error"); }
   };
+  const ssh = v.via === "ssh";
+  const pick = (via) => bind("via").onChange({ target: { value: via } });
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+    <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
       <div className="card space-y-4 p-5">
+        <div>
+          <span className="label">نوع اتصال</span>
+          <div className="flex flex-wrap gap-2">
+            {[["direct", "مستقیم (پورت ۳۳۰۶)"], ["ssh", "از طریق SSH (بدون باز کردن ۳۳۰۶)"]].map(([k, l]) => (
+              <button key={k} type="button" onClick={() => pick(k)} className={`btn btn-sm ${(v.via || "direct") === k ? "!border-accent !bg-accent-soft !text-accent" : ""}`}>{l}</button>
+            ))}
+          </div>
+          {ssh && (
+            <p className="mt-2 text-xs leading-5 text-ink-3">
+              از همان نام کاربری و رمز SSH تب «مانیتورینگ سرور» استفاده می‌شود
+              {sshUser ? <> (کاربر <span className="ltr font-mono">{sshUser}</span>)</> : <b className="text-ring"> — هنوز وارد نشده است</b>}.
+              آدرس MySQL را از دید خود سرور ایزابل وارد کنید؛ معمولاً <span className="ltr font-mono">127.0.0.1</span>.
+            </p>
+          )}
+        </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="آدرس MySQL" className="sm:col-span-2"><input className="input ltr text-left" {...bind("host")} /></Field>
+          <Field label={ssh ? "آدرس MySQL روی سرور ایزابل" : "آدرس MySQL"} className="sm:col-span-2"><input className="input ltr text-left" {...bind("host")} placeholder={ssh ? "127.0.0.1" : "192.168.1.10"} /></Field>
           <Field label="پورت"><input className="input ltr text-left" {...bind("port")} /></Field>
           <Field label="نام کاربری"><input className="input ltr text-left" {...bind("user")} autoComplete="off" /></Field>
           <Field label="رمز" hint={value.passwordSet ? "رمز ذخیره شده است" : ""}><input className="input ltr text-left" type="password" {...bind("password")} autoComplete="new-password" /></Field>
@@ -135,17 +152,23 @@ function CdrForm({ value, reload }) {
         </div>
         <Result r={r} />
         <div className="flex gap-2">
-          <button className="btn" onClick={test} disabled={busy || !v.host}>{busy ? <Spinner className="size-4" /> : <Icon name="pulse" className="size-4" />}تست اتصال</button>
+          <button className="btn" onClick={test} disabled={busy || (!ssh && !v.host)}>{busy ? <Spinner className="size-4" /> : <Icon name="pulse" className="size-4" />}تست اتصال</button>
           <button className="btn btn-primary" onClick={save}>ذخیره</button>
         </div>
       </div>
       <div className="card p-4 text-xs leading-6 text-ink-2">
         <div className="mb-1 text-sm font-semibold text-ink">کاربر فقط‌خواندنی روی ایزابل</div>
         روی سرور ایزابل (MariaDB) اجرا کنید:
-        <pre className="mt-2 rounded-lg bg-surface-2 p-2.5 ltr text-left text-[11px] leading-5">{`CREATE USER 'panel'@'IP-پنل' IDENTIFIED BY 'رمز';
-GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'IP-پنل';
+        <pre className="mt-2 overflow-x-auto rounded-lg bg-surface-2 p-2.5 ltr text-left text-[11px] leading-5">{ssh ? `CREATE USER 'panel'@'localhost' IDENTIFIED BY 'PASSWORD';
+GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'localhost';
+CREATE USER 'panel'@'127.0.0.1' IDENTIFIED BY 'PASSWORD';
+GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'127.0.0.1';
+FLUSH PRIVILEGES;` : `CREATE USER 'panel'@'PANEL_IP' IDENTIFIED BY 'PASSWORD';
+GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'PANEL_IP';
 FLUSH PRIVILEGES;`}</pre>
-        و در <span className="ltr">/etc/my.cnf</span> مقدار <span className="ltr">bind-address</span> را طوری تنظیم کنید که از سرور پنل در دسترس باشد (پورت ۳۳۰۶ را فقط برای IP پنل در فایروال باز کنید).
+        {ssh
+          ? <>در حالت SSH، پورت ۳۳۰۶ بسته می‌ماند و MySQL فقط از خود سرور (localhost) پاسخ می‌دهد. کاربر SSH به دسترسی root نیاز ندارد، ولی <span className="ltr">AllowTcpForwarding</span> در <span className="ltr">sshd_config</span> نباید <span className="ltr">no</span> باشد.</>
+          : <>و در <span className="ltr">/etc/my.cnf</span> مقدار <span className="ltr">bind-address</span> را طوری تنظیم کنید که از سرور پنل در دسترس باشد (پورت ۳۳۰۶ را فقط برای IP پنل در فایروال باز کنید).</>}
       </div>
     </div>
   );
