@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api.js";
-import { Icon, Spinner } from "../components/ui.jsx";
+import { Icon, Spinner, Copyright } from "../components/ui.jsx";
 
 export default function Login({ onLogin }) {
   const [f, setF] = useState({ username: "", password: "" });
@@ -13,7 +13,7 @@ export default function Login({ onLogin }) {
     catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
       <form onSubmit={submit} className="card w-full max-w-sm p-7 shadow-sm">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-accent text-accent-ink"><Icon name="headset" className="size-7" /></div>
@@ -29,6 +29,7 @@ export default function Login({ onLogin }) {
         {err && <div className="mb-3 rounded-lg bg-talk-soft px-3 py-2 text-sm text-talk">{err}</div>}
         <button className="btn btn-primary w-full py-2.5" disabled={busy}>{busy ? <Spinner className="size-4" /> : "ورود"}</button>
       </form>
+      <Copyright />
     </div>
   );
 }

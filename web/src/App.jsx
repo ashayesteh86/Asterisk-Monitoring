@@ -3,7 +3,7 @@ import { NavLink, Route, Routes, Navigate, useLocation } from "react-router-dom"
 import { api } from "./api.js";
 import { startLive, stopLive, useLive } from "./live.js";
 import { SessionCtx, useContactsLookup, can } from "./session.jsx";
-import { Icon, Spinner } from "./components/ui.jsx";
+import { Icon, Spinner, Copyright } from "./components/ui.jsx";
 import { todayLong, fa } from "./jalali.js";
 import Login from "./pages/Login.jsx";
 import Panel from "./pages/Panel.jsx";
@@ -118,14 +118,15 @@ function Shell({ me, theme, setTheme, logout, children }) {
         </div>
       </aside>
       {menu && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setMenu(false)} />}
-      <main className="min-w-0 flex-1">
+      <main className="flex min-h-screen min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-bg/90 px-4 py-3 backdrop-blur lg:px-6">
           <button className="rounded-lg p-1.5 hover:bg-surface-2 lg:hidden" onClick={() => setMenu(true)} aria-label="منو"><Icon name="menu" /></button>
           <div className="text-sm text-ink-2">{todayLong()}</div>
           <div className="flex-1" />
           {!amiOk && <span className="chip bg-talk-soft text-talk"><Icon name="alert" className="size-3.5" />{connected ? "AMI متصل نیست" : "در حال اتصال مجدد…"}</span>}
         </header>
-        <div className="p-4 lg:p-6">{children}</div>
+        <div className="flex-1 p-4 lg:p-6">{children}</div>
+        <Copyright className="border-t border-line px-4 py-4" />
       </main>
     </div>
   );

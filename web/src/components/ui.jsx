@@ -135,3 +135,13 @@ export function Tabs({ tabs, value, onChange }) {
     </div>
   );
 }
+
+export function Copyright({ className = "" }) {
+  const year = new Date().getFullYear();
+  const jy = year - (new Date().getMonth() < 2 || (new Date().getMonth() === 2 && new Date().getDate() < 21) ? 622 : 621);
+  return (
+    <footer className={`text-center text-xs text-ink-3 ${className}`}>
+      © <span className="num">{String(jy).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[d])}</span> <span className="ltr">MahanAsterisk Monitoring</span> — کلیه حقوق محفوظ است.
+    </footer>
+  );
+}
