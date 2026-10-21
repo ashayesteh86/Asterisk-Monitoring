@@ -11,7 +11,7 @@ const DIR = { inbound: { label: "ورودی", icon: "phoneIn" }, outbound: { lab
 const SPY = { listen: { label: "شنود", icon: "ear", hint: "فقط می‌شنوید" }, whisper: { label: "نجوا", icon: "whisper", hint: "فقط داخلی صدای شما را می‌شنود" }, barge: { label: "ورود به مکالمه", icon: "barge", hint: "هر دو طرف صدای شما را می‌شنوند" } };
 
 export default function Calls() {
-  const { me, lookup } = useSession();
+  const { me, lookup, server } = useSession();
   const toast = useToast();
   const peers = useLive((s) => s.peers);
   const channels = useLive((s) => s.channels);
@@ -19,7 +19,8 @@ export default function Calls() {
   const [q, setQ] = useState("");
   const [dir, setDir] = useState("");
   const [state, setState] = useState("");
-  const [spyFrom, setSpyFrom] = useState(me.user.extension || "");
+  const spyKey = `spy.from.${server?.id || 0}`;
+  const [spyPick, setSpyPick] = useState(() => { try { return localStorage.getItem(spyKey) || ""; } catch { return ""; } });
   const [confirm, setConfirm] = useState(null);
 
   const all = useMemo(() => buildCalls(peers, channels, me.dial.hideLocal), [peers, channels, me.dial.hideLocal]);
@@ -33,15 +34,22 @@ export default function Calls() {
   });
   const dialExts = Object.values(peers).filter((p) => p.kind === "extension" && inScope(me.user, "dial", p.name)).sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
   const canSpy = can(me.user, "calls.spy");
+  // supervisor phone: the remembered choice, else the user's own extension — only if it exists on this server
+  const exists = (e) => e && dialExts.some((x) => x.name === e);
+  const spyFrom = exists(spyPick) ? spyPick : exists(me.user.extension) ? me.user.extension : "";
+  const setSpyFrom = (v) => { setSpyPick(v); try { localStorage.setItem(spyKey, v); } catch { /* ignore */ } };
   const canHang = can(me.user, "calls.hangup");
 
   const act = async (path, body, okText) => {
     try { await api(path, { method: "POST", body }); toast(okText); } catch (e) { toast(e.message, "error"); }
   };
   const spy = (call, mode) => {
-    const target = call.exts.find((e) => inScope(me.user, "spy", e.peer) && e.peer !== spyFrom) || call.exts[0];
-    if (!spyFrom) return toast("داخلی ناظر را انتخاب کنید", "error");
-    act("/api/calls/spy", { channel: target.name, mode, from: spyFrom }, `${SPY[mode].label} داخلی ${fa(target.peer)} — ابتدا داخلی ${fa(spyFrom)} زنگ می‌خورد`);
+    if (!spyFrom) return toast("ابتدا «داخلی ناظر» را انتخاب کنید؛ تلفن همان داخلی برای شنود زنگ می‌خورد", "error");
+    // spy on an extension leg when there is one; trunk-to-trunk calls are spied through their first leg
+    const target = call.exts.find((e) => inScope(me.user, "spy", e.peer) && e.peer !== spyFrom) || call.exts.find((e) => e.peer !== spyFrom) || call.channels.find((c) => c.peer !== spyFrom);
+    if (!target) return toast("این تماس روی داخلی ناظر است و قابل شنود نیست", "error");
+    const who = call.exts.includes(target) ? `داخلی ${fa(target.peer)}` : `تماس ${target.tech === "DAHDI" ? "E1" : target.peer}`;
+    act("/api/calls/spy", { channel: target.name, mode, from: spyFrom }, `${SPY[mode].label} ${who} — ابتدا داخلی ${fa(spyFrom)} زنگ می‌خورد`);
   };
   const totals = { inbound: 0, outbound: 0, internal: 0, ringing: 0 };
   for (const c of calls) { totals[c.direction]++; if (c.status === "ringing") totals.ringing++; }
@@ -55,9 +63,9 @@ export default function Calls() {
         <div className="flex-1" />
         {canSpy && (
           <label className="flex items-center gap-2 text-sm">
-            <span className="text-ink-3">داخلی ناظر برای شنود:</span>
-            <select className="input w-auto py-1" value={spyFrom} onChange={(e) => setSpyFrom(e.target.value)}>
-              <option value="">—</option>
+            <span className={spyFrom ? "text-ink-3" : "font-medium text-ring"}>داخلی ناظر برای شنود:</span>
+            <select className={`input w-auto py-1 ${spyFrom ? "" : "!border-ring"}`} value={spyFrom} onChange={(e) => setSpyFrom(e.target.value)}>
+              <option value="">— انتخاب کنید —</option>
               {dialExts.map((e) => <option key={e.name} value={e.name}>{e.name} {e.callerName}</option>)}
             </select>
           </label>
@@ -84,7 +92,7 @@ export default function Calls() {
                 const ext = c.exts[0];
                 const other = ext ? otherParty(ext, channels, peers) : { number: c.channels[0].callerNum, name: "" };
                 const name = lookup(other.number) || other.name;
-                const spyOk = canSpy && c.status === "talking" && callInScope(me.user, "spy", c.exts.map((e) => e.peer)) && c.exts.length > 0 && !c.channels.some((x) => x.app === "ChanSpy");
+                const spyOk = canSpy && c.status === "talking" && callInScope(me.user, "spy", c.exts.map((e) => e.peer)) && !c.channels.some((x) => x.app === "ChanSpy");
                 return (
                   <tr key={c.id}>
                     <td><span className="flex items-center gap-1.5 text-ink-2"><Icon name={d.icon} className={`size-4 ${c.status === "ringing" ? "shake text-ring" : ""}`} />{d.label}</span></td>
@@ -108,7 +116,7 @@ export default function Calls() {
                     <td className="num text-ink-3">{dur((now - c.startedAt) / 1000)}</td>
                     <td className="whitespace-nowrap text-left">
                       {spyOk && Object.entries(SPY).map(([m, s]) => (
-                        <button key={m} className="btn btn-sm ml-1" title={s.hint} onClick={() => spy(c, m)}><Icon name={s.icon} className="size-4" /><span className="hidden xl:inline">{s.label}</span></button>
+                        <button key={m} className={`btn btn-sm ml-1 ${spyFrom ? "" : "opacity-60"}`} title={spyFrom ? s.hint : "ابتدا داخلی ناظر را انتخاب کنید"} onClick={() => spy(c, m)}><Icon name={s.icon} className="size-4" /><span className="hidden xl:inline">{s.label}</span></button>
                       ))}
                       {canHang && <button className="btn btn-sm btn-danger" onClick={() => setConfirm(c)}><Icon name="hangup" className="size-4" /><span className="hidden xl:inline">قطع</span></button>}
                     </td>

@@ -260,8 +260,11 @@ function ExtDetail({ ext, onClose, channels, peers, lookup }) {
   const spyOk = can(me.user, "calls.spy") && inScope(me.user, "spy", ext.name);
   const hangOk = can(me.user, "calls.hangup") && inScope(me.user, "calls", ext.name);
   const moveOk = can(me.user, "calls.transfer") && inScope(me.user, "calls", ext.name);
+  const { server } = useSession();
+  // same supervisor phone as the live calls page (remembered per server), else the user's own extension
+  const spyFrom = (() => { try { const v = localStorage.getItem(`spy.from.${server?.id || 0}`); return v && peers[v]?.kind === "extension" ? v : ""; } catch { return ""; } })() || me.user.extension;
   const act = async (path, body, okText) => {
-    try { await api(path, { method: "POST", body }); toast(okText); } catch (e) { toast(e.message, "error"); }
+    try { await api(path, { method: "POST", body: path.endsWith("/spy") ? { ...body, from: spyFrom } : body }); toast(okText); } catch (e) { toast(e.message, "error"); }
   };
   const rows = [
     ["وضعیت", <StatusChip status={ext.status} />],
@@ -309,7 +312,7 @@ function ExtDetail({ ext, onClose, channels, peers, lookup }) {
               <div className="mt-3 flex flex-wrap gap-2">
                 {spyOk && c.state === 6 && c.app !== "ChanSpy" && (
                   <>
-                    <button className="btn btn-sm" onClick={() => act("/api/calls/spy", { channel: c.name, mode: "listen" }, `شنود: ابتدا داخلی ${fa(me.user.extension)} زنگ می‌خورد`)}><Icon name="ear" className="size-4" />شنود</button>
+                    <button className="btn btn-sm" onClick={() => act("/api/calls/spy", { channel: c.name, mode: "listen" }, `شنود: ابتدا داخلی ${fa(spyFrom)} زنگ می‌خورد`)}><Icon name="ear" className="size-4" />شنود</button>
                     <button className="btn btn-sm" onClick={() => act("/api/calls/spy", { channel: c.name, mode: "whisper" }, "نجوا (فقط داخلی صدای شما را می‌شنود)")}><Icon name="whisper" className="size-4" />نجوا</button>
                     <button className="btn btn-sm" onClick={() => act("/api/calls/spy", { channel: c.name, mode: "barge" }, "ورود به مکالمه (سه‌طرفه)")}><Icon name="barge" className="size-4" />ورود به مکالمه</button>
                   </>

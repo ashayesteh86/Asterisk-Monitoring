@@ -190,6 +190,7 @@ app.post("/api/calls/spy", requirePerm("calls.spy"), wrap(async (req, res) => {
   if (!ch) return res.status(404).json({ error: "این تماس دیگر فعال نیست" });
   if (!EXT.test(from)) return res.status(400).json({ error: "داخلی ناظر مشخص نیست" });
   if (ch.peer === from) return res.status(400).json({ error: "نمی‌توانید تماس داخلی خودتان را شنود کنید" });
+  if (req.srv.pbx.peers.get(from)?.kind !== "extension") return res.status(400).json({ error: `داخلی ناظر ${from} روی این سرور وجود ندارد؛ داخلی خودتان را انتخاب کنید` });
   if (!callInScope(req.srv, req.user, "spy", channel)) return res.status(403).json({ error: "شنود این داخلی برای گروه شما مجاز نیست" });
   if (from !== req.user.extension && !inScope(req.user, "dial", from)) return res.status(403).json({ error: `اجازه استفاده از داخلی ${from} را ندارید` });
   const r = await req.srv.ami.action({
