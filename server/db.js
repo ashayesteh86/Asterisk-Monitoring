@@ -79,6 +79,20 @@ const MIGRATIONS = [
      queue_waiting integer NOT NULL DEFAULT 0,
      online_exts integer NOT NULL DEFAULT 0
    );`,
+  `CREATE TABLE pbx_servers (
+     id serial PRIMARY KEY,
+     name text NOT NULL,
+     enabled boolean NOT NULL DEFAULT true,
+     sort integer NOT NULL DEFAULT 0,
+     config jsonb NOT NULL DEFAULT '{}',
+     created_at timestamptz NOT NULL DEFAULT now()
+   );
+   ALTER TABLE call_samples ADD COLUMN server_id integer NOT NULL DEFAULT 1;
+   ALTER TABLE call_samples DROP CONSTRAINT call_samples_pkey;
+   ALTER TABLE call_samples ADD PRIMARY KEY (server_id, at);
+   ALTER TABLE config_backups ADD COLUMN server_id integer;
+   ALTER TABLE audit_log ADD COLUMN server_id integer;
+   ALTER TABLE access_groups ADD COLUMN servers jsonb NOT NULL DEFAULT '{"mode":"all","ids":[]}';`,
 ];
 
 export async function migrate() {
@@ -183,6 +197,94 @@ export function publicSettings() {
 }
 
 export async function audit(req, action, target = "", details = {}) {
-  await pool.query(`INSERT INTO audit_log (user_id, username, action, target, details, ip) VALUES ($1,$2,$3,$4,$5,$6)`,
-    [req.user?.id || null, req.user?.username || "", action, String(target), details, req.ip || ""]).catch(() => {});
+  await pool.query(`INSERT INTO audit_log (user_id, username, action, target, details, ip, server_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [req.user?.id || null, req.user?.username || "", action, String(target), details, req.ip || "", req.srv?.id ?? null]).catch(() => {});
+}
+
+// ---------- PBX servers ----------
+// Each server row keeps its own ami / cdr / dial / system sections (same shape as DEFAULTS, secrets encrypted).
+export const SERVER_SECTIONS = ["ami", "cdr", "dial", "system"];
+let servers = new Map();
+
+function decodeServer(row) {
+  const config = {};
+  for (const k of SERVER_SECTIONS) {
+    config[k] = { ...structuredClone(DEFAULTS[k]), ...(row.config?.[k] || {}) };
+    for (const f of SECRET_FIELDS[k] || []) config[k][f] = decrypt(config[k][f]);
+  }
+  if (String(config.dial.extensionPattern).startsWith("^")) config.dial.extensionPattern = DEFAULTS.dial.extensionPattern;
+  return { id: row.id, name: row.name, enabled: row.enabled, sort: row.sort, config };
+}
+
+function encodeConfig(config) {
+  const out = {};
+  for (const k of SERVER_SECTIONS) {
+    out[k] = { ...config[k] };
+    for (const f of SECRET_FIELDS[k] || []) out[k][f] = encrypt(out[k][f]);
+  }
+  return out;
+}
+
+export async function loadServers() {
+  const { rows } = await pool.query(`SELECT * FROM pbx_servers ORDER BY sort, id`);
+  servers = new Map(rows.map((r) => [r.id, decodeServer(r)]));
+  return [...servers.values()];
+}
+export const listServers = () => [...servers.values()].sort((a, b) => a.sort - b.sort || a.id - b.id);
+export const getServer = (id) => servers.get(Number(id)) || null;
+
+/** First run after the multi-server upgrade: the old single-server settings become server #1. */
+export async function ensureServers() {
+  const { rows } = await pool.query(`SELECT count(*)::int AS n FROM pbx_servers`);
+  if (rows[0].n === 0) {
+    const legacy = settings();
+    const config = Object.fromEntries(SERVER_SECTIONS.map((k) => [k, legacy[k]]));
+    await pool.query(`INSERT INTO pbx_servers (name, config) VALUES ($1, $2)`, [legacy.ami.host ? `سرور ${legacy.ami.host}` : "سرور اصلی", encodeConfig(config)]);
+  }
+  return loadServers();
+}
+
+export async function createServer({ name, copyFrom }) {
+  const base = copyFrom ? getServer(copyFrom)?.config : null;
+  const config = Object.fromEntries(SERVER_SECTIONS.map((k) => [k, structuredClone(base ? { ...base[k] } : DEFAULTS[k])]));
+  if (base) { config.ami = { ...DEFAULTS.ami }; config.cdr = { ...base.cdr, host: base.cdr.via === "ssh" ? base.cdr.host : "", password: "" }; config.system = { ...base.system, sshHost: "", sshPassword: "", sshKey: "" }; }
+  const { rows } = await pool.query(`INSERT INTO pbx_servers (name, config, sort) VALUES ($1, $2, (SELECT COALESCE(max(sort), 0) + 1 FROM pbx_servers)) RETURNING *`,
+    [String(name).slice(0, 60), encodeConfig(config)]);
+  const s = decodeServer(rows[0]);
+  servers.set(s.id, s);
+  return s;
+}
+
+export async function updateServerMeta(id, { name, enabled, sort }) {
+  const s = getServer(id);
+  if (!s) return null;
+  await pool.query(`UPDATE pbx_servers SET name = $1, enabled = $2, sort = $3 WHERE id = $4`,
+    [String(name ?? s.name).slice(0, 60), enabled ?? s.enabled, Number(sort ?? s.sort) || 0, s.id]);
+  Object.assign(s, { name: String(name ?? s.name).slice(0, 60), enabled: enabled ?? s.enabled, sort: Number(sort ?? s.sort) || 0 });
+  return s;
+}
+
+/** Merge one section; an empty secret in the form keeps the stored one. */
+export async function saveServerSection(id, key, value) {
+  const s = getServer(id);
+  if (!s || !SERVER_SECTIONS.includes(key)) return null;
+  const merged = { ...s.config[key], ...value };
+  for (const f of SECRET_FIELDS[key] || []) if (value[f] === undefined || value[f] === "") merged[f] = s.config[key][f];
+  const config = { ...s.config, [key]: merged };
+  await pool.query(`UPDATE pbx_servers SET config = $1 WHERE id = $2`, [encodeConfig(config), s.id]);
+  s.config = config;
+  return s;
+}
+
+export async function deleteServer(id) {
+  await pool.query(`DELETE FROM pbx_servers WHERE id = $1`, [id]);
+  await pool.query(`DELETE FROM call_samples WHERE server_id = $1`, [id]);
+  servers.delete(Number(id));
+}
+
+/** A server's config for the browser: secrets replaced by "<field>Set" flags. */
+export function publicServerConfig(s) {
+  const c = structuredClone(s.config);
+  for (const [k, fields] of Object.entries(SECRET_FIELDS)) for (const f of fields) { c[k][`${f}Set`] = !!c[k][f]; c[k][f] = ""; }
+  return c;
 }

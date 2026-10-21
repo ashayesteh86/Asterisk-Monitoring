@@ -60,7 +60,10 @@ export function cleanGroup(b) {
     if ((mode === "list" || mode === "except") && !list.trim()) throw Object.assign(new Error(`برای «${s.label}» فهرست داخلی‌ها را وارد کنید`), { status: 400 });
     scopes[s.key] = { mode, list };
   }
-  return { name, description: String(b.description || "").slice(0, 200), is_admin: !!b.is_admin, permissions, scopes };
+  const ids = [...new Set((Array.isArray(b.servers?.ids) ? b.servers.ids : []).map(Number).filter((n) => n > 0))];
+  const servers = { mode: b.servers?.mode === "list" ? "list" : "all", ids };
+  if (servers.mode === "list" && !ids.length && !b.is_admin) throw Object.assign(new Error("حداقل یک سرور برای این گروه انتخاب کنید"), { status: 400 });
+  return { name, description: String(b.description || "").slice(0, 200), is_admin: !!b.is_admin, permissions, scopes, servers };
 }
 
 function tokenMatch(tok, ext) {
@@ -88,6 +91,13 @@ export function inScope(user, section, ext) {
     case "except": return !listMatch(s.list, ext);
     default: return section === "dial" && !!user.extension && String(ext) === String(user.extension);
   }
+}
+
+/** May this user see PBX server `id`? (group setting: all servers, or a list) */
+export function serverAllowed(user, id) {
+  if (!user) return false;
+  if (user.isAdmin || (user.servers?.mode || "all") === "all") return true;
+  return (user.servers.ids || []).map(Number).includes(Number(id));
 }
 
 export const can = (user, perm) => !!user && (user.isAdmin || user.perms?.includes(perm));

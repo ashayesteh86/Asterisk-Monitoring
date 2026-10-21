@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Route, Routes, Navigate, useLocation } from "react-router-dom";
-import { api } from "./api.js";
-import { startLive, stopLive, useLive } from "./live.js";
+import { api, setApiServer } from "./api.js";
+import { startLive, stopLive, switchLive, useLive } from "./live.js";
 import { SessionCtx, useContactsLookup, can } from "./session.jsx";
 import { Icon, Spinner, Copyright } from "./components/ui.jsx";
 import { todayLong, fa } from "./jalali.js";
@@ -16,14 +16,16 @@ import Phonebook from "./pages/Phonebook.jsx";
 import Dialpad from "./pages/Dialpad.jsx";
 import Reports from "./pages/Reports.jsx";
 import Settings from "./pages/Settings.jsx";
+import Servers from "./pages/Servers.jsx";
 
 export const NAV = [
+  { to: "/servers", icon: "server", label: "همه سرورها", perm: null, el: <Servers />, multi: true },
   { to: "/", icon: "chart", label: "داشبورد", perm: "dashboard.view", el: <Dashboard /> },
   { to: "/panel", icon: "grid", label: "پنل اپراتور", perm: "panel.view", el: <Panel /> },
-  { to: "/calls", icon: "pulse", label: "تماس‌های آنلاین", perm: "calls.view", el: <Calls /> },
+  { to: "/calls", icon: "phone", label: "تماس‌های آنلاین", perm: "calls.view", el: <Calls /> },
   { to: "/queues", icon: "users", label: "صف‌ها", perm: "queues.view", el: <Queues /> },
   { to: "/trunks", icon: "trunk", label: "ترانک‌ها", perm: "trunks.view", el: <Trunks /> },
-  { to: "/system", icon: "server", label: "وضعیت سرور", perm: "system.view", el: <SystemPage /> },
+  { to: "/system", icon: "pulse", label: "وضعیت سرور", perm: "system.view", el: <SystemPage /> },
   { to: "/phonebook", icon: "book", label: "دفترچه تلفن", perm: "phonebook.view", el: <Phonebook /> },
   { to: "/dialpad", icon: "dialpad", label: "شماره‌گیر", perm: "dialpad.use", el: <Dialpad /> },
   { to: "/reports", icon: "list", label: "گزارش تماس‌ها", perm: "reports.view", el: <Reports /> },
@@ -42,32 +44,116 @@ function useTheme() {
   return [theme, setTheme];
 }
 
+const SERVER_KEY = "pbx.server";
+/** Pick the remembered server if the user may still see it, else the first one. */
+function initialServer(list) {
+  let saved = 0;
+  try { saved = Number(localStorage.getItem(SERVER_KEY)) || 0; } catch { /* ignore */ }
+  return (list.find((s) => s.id === saved) || list[0])?.id || 0;
+}
+
 export default function App() {
   const [me, setMe] = useState(undefined);
+  const [serverId, setServerId] = useState(0);
   const [theme, setTheme] = useTheme();
   const contacts = useContactsLookup(me?.user);
-  const load = () => api("/api/me").then(setMe).catch(() => setMe(null));
+  const load = () => api("/api/me").then((m) => {
+    const id = initialServer(m.servers || []);
+    setApiServer(id);
+    setServerId(id);
+    setMe(m);
+  }).catch(() => setMe(null));
   useEffect(() => { load(); const h = () => setMe(null); window.addEventListener("auth:logout", h); return () => window.removeEventListener("auth:logout", h); }, []);
-  useEffect(() => { if (me) startLive(); else if (me === null) stopLive(); }, [me]);
+  const started = useRef(false);
+  useEffect(() => {
+    if (me && !started.current) { started.current = true; startLive(serverId); }
+    else if (me === null) { started.current = false; stopLive(); }
+  }, [me]);
+  const liveServers = useLive((st) => st.servers);
 
   if (me === undefined) return <div className="flex h-screen items-center justify-center text-ink-3"><Spinner /></div>;
   if (!me) return <Login onLogin={load} />;
   const logout = async () => { await api("/api/logout", { method: "POST" }); setMe(null); };
 
+  const servers = liveServers || me.servers || [];
+  const server = servers.find((x) => x.id === serverId) || servers[0] || null;
+  const selectServer = (id) => {
+    if (id === serverId) return;
+    try { localStorage.setItem(SERVER_KEY, String(id)); } catch { /* ignore */ }
+    setApiServer(id);
+    setServerId(id);
+    switchLive(id);
+  };
+  const dial = server?.dial || { tech: "SIP", context: "from-internal", hideLocal: true, recordingUrl: false };
+  const nav = NAV.filter((n) => (n.perm ? can(me.user, n.perm) : servers.length > 1 || can(me.user, "settings.manage")));
+
   return (
-    <SessionCtx.Provider value={{ me, reloadMe: load, ...contacts }}>
-      <Shell me={me} theme={theme} setTheme={setTheme} logout={logout}>
-        <Routes>
-          {NAV.filter((n) => can(me.user, n.perm)).map((n) => <Route key={n.to} path={n.to} element={n.el} />)}
-          <Route path="/settings/*" element={<Settings />} />
-          <Route path="*" element={<Navigate to={NAV.find((n) => can(me.user, n.perm))?.to || "/settings"} />} />
-        </Routes>
+    <SessionCtx.Provider value={{ me: { ...me, dial }, reloadMe: load, servers, server, selectServer, ...contacts }}>
+      <Shell me={me} nav={nav} servers={servers} server={server} selectServer={selectServer} theme={theme} setTheme={setTheme} logout={logout}>
+        {!server ? <NoServer me={me} /> : (
+          <Routes key={server.id}>
+            {nav.map((n) => <Route key={n.to} path={n.to} element={n.el} />)}
+            <Route path="/settings/*" element={<Settings />} />
+            <Route path="*" element={<Navigate to={nav.find((n) => !n.multi)?.to || "/settings"} />} />
+          </Routes>
+        )}
       </Shell>
     </SessionCtx.Provider>
   );
 }
 
-function Shell({ me, theme, setTheme, logout, children }) {
+function NoServer({ me }) {
+  return (
+    <div className="card mx-auto max-w-lg p-8 text-center">
+      <Icon name="server" className="mx-auto size-10 text-ink-3" />
+      <div className="mt-3 font-semibold">هیچ سروری برای شما در دسترس نیست</div>
+      <p className="mt-1 text-sm text-ink-3">{can(me.user, "settings.manage") ? "از «تنظیمات › سرورها» یک سرور استریسک اضافه کنید." : "از مدیر سیستم بخواهید دسترسی سرور را به گروه شما بدهد."}</p>
+      {can(me.user, "settings.manage") && <Routes><Route path="*" element={<Settings />} /></Routes>}
+    </div>
+  );
+}
+
+const STATUS_DOT = { connected: "bg-idle", connecting: "bg-ring", error: "bg-talk", disabled: "bg-off" };
+
+/** Server picker: current server with status; menu lists every allowed server. */
+function ServerPicker({ servers, server, selectServer }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => box.current && !box.current.contains(e.target) && setOpen(false);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  if (!server) return null;
+  const st = (s) => (s.enabled ? s.ami?.status : "disabled");
+  return (
+    <div className="relative px-3 pb-3" ref={box}>
+      <button onClick={() => servers.length > 1 && setOpen(!open)} className={`flex w-full items-center gap-2.5 rounded-xl border border-line bg-surface-2 px-3 py-2 text-right ${servers.length > 1 ? "hover:border-accent" : "cursor-default"}`}>
+        <span className={`size-2.5 shrink-0 rounded-full ${STATUS_DOT[st(server)] || "bg-off"}`} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{server.name}</span>
+          <span className="block truncate text-[11px] text-ink-3 ltr text-right">{server.ami?.host || "—"}{server.ami?.version ? ` · ${server.ami.version}` : ""}</span>
+        </span>
+        {servers.length > 1 && <Icon name="chevronL" className={`size-4 shrink-0 text-ink-3 transition ${open ? "-rotate-90" : ""}`} />}
+      </button>
+      {open && (
+        <div className="card absolute inset-x-3 top-full z-50 mt-1 max-h-80 overflow-y-auto p-1 shadow-xl">
+          {servers.map((s) => (
+            <button key={s.id} onClick={() => { selectServer(s.id); setOpen(false); }}
+              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-right text-sm hover:bg-surface-2 ${s.id === server.id ? "bg-accent-soft text-accent" : ""}`}>
+              <span className={`size-2 shrink-0 rounded-full ${STATUS_DOT[st(s)] || "bg-off"}`} />
+              <span className="min-w-0 flex-1 truncate">{s.name}</span>
+              <span className="text-[11px] text-ink-3 ltr">{s.ami?.host}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Shell({ me, nav, servers, server, selectServer, theme, setTheme, logout, children }) {
   const [menu, setMenu] = useState(false);
   const loc = useLocation();
   useEffect(() => setMenu(false), [loc.pathname]);
@@ -75,7 +161,7 @@ function Shell({ me, theme, setTheme, logout, children }) {
   const connected = useLive((s) => s.connected);
   const manage = ["settings.manage", "users.manage", "audit.view"].some((p) => can(me.user, p));
   const links = [
-    ...NAV.filter((n) => can(me.user, n.perm)),
+    ...nav,
     manage ? { to: "/settings", icon: "settings", label: "تنظیمات" } : { to: "/settings", icon: "user", label: "حساب کاربری" },
   ];
   const amiOk = connected && ami?.status === "connected";
@@ -90,13 +176,15 @@ function Shell({ me, theme, setTheme, logout, children }) {
             <div className="text-xs text-ink-3">Asterisk / Issabel</div>
           </div>
         </div>
+        <ServerPicker servers={servers} server={server} selectServer={selectServer} />
         <nav className="flex-1 space-y-0.5 px-3">
-          {links.map((l) => (
+          {links.map((l) => [
             <NavLink key={l.to} to={l.to} end={l.to === "/"}
               className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${isActive ? "bg-accent-soft font-medium text-accent" : "text-ink-2 hover:bg-surface-2 hover:text-ink"}`}>
               <Icon name={l.icon} />{l.label}
-            </NavLink>
-          ))}
+            </NavLink>,
+            l.multi ? <div key={`${l.to}-sep`} className="mx-3 my-1.5 border-t border-line" /> : null,
+          ])}
         </nav>
         <div className="m-3 rounded-xl bg-surface-2 p-3 text-xs">
           <div className="flex items-center gap-2">
@@ -122,6 +210,7 @@ function Shell({ me, theme, setTheme, logout, children }) {
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-bg/90 px-4 py-3 backdrop-blur lg:px-6">
           <button className="rounded-lg p-1.5 hover:bg-surface-2 lg:hidden" onClick={() => setMenu(true)} aria-label="منو"><Icon name="menu" /></button>
           <div className="text-sm text-ink-2">{todayLong()}</div>
+          {server && servers.length > 1 && <span className="chip hidden bg-accent-soft text-accent sm:inline-flex"><Icon name="server" className="size-3.5" />{server.name}</span>}
           <div className="flex-1" />
           {!amiOk && <span className="chip bg-talk-soft text-talk"><Icon name="alert" className="size-3.5" />{connected ? "AMI متصل نیست" : "در حال اتصال مجدد…"}</span>}
         </header>

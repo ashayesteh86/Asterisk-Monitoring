@@ -3,7 +3,6 @@
 // on Asterisk 12+, live_dangerously=yes) or over SSH. Asterisk's own numbers always come from AMI.
 import { EventEmitter } from "node:events";
 import { Client as SshClient } from "ssh2";
-import { settings } from "./db.js";
 
 const HISTORY = 6 * 3600; // seconds of samples kept in memory
 
@@ -75,9 +74,10 @@ const sysinfoNum = (lines, label) => {
 };
 
 export class SystemMonitor extends EventEmitter {
-  constructor(ami) {
+  constructor(ami, cfg) {
     super();
     this.ami = ami;
+    this.cfg = cfg; // () => {ami, system, …} for this PBX
     this.latest = null;
     this.history = [];
     this.lastError = "";
@@ -88,21 +88,23 @@ export class SystemMonitor extends EventEmitter {
 
   schedule() {
     clearInterval(this.timer);
-    const s = settings().system;
+    const s = this.cfg().system;
     if (s.method === "off") return;
     const sec = Math.min(Math.max(Number(s.interval) || 15, 5), 300);
     this.timer = setInterval(() => this.sample().catch(() => {}), sec * 1000);
     setTimeout(() => this.sample().catch(() => {}), 2000);
   }
 
+  destroy() { clearInterval(this.timer); this.timer = null; }
+
   services() {
-    return String(settings().system.services || "").split(/[,\s]+/).filter(Boolean).slice(0, 15);
+    return String(this.cfg().system.services || "").split(/[,\s]+/).filter(Boolean).slice(0, 15);
   }
 
   async hostMetrics() {
-    const s = settings().system;
+    const s = this.cfg().system;
     const script = metricsScript(this.services());
-    if (s.method === "ssh") return parseMetrics(await sshExec(s, script.replace(" | tr '\\n' ';'", "")), this.services());
+    if (s.method === "ssh") return parseMetrics(await sshExec(s, this.cfg().ami.host, script.replace(" | tr '\\n' ';'", "")), this.services());
     if (s.method !== "ami") return null;
     const r = await this.ami.action({ Action: "Getvar", Variable: `SHELL(${script})` }, 15000);
     if (r.Response !== "Success" || !r.Value) {
@@ -163,7 +165,7 @@ export class SystemMonitor extends EventEmitter {
         memory = { total: si.totalRam, used: si.totalRam - si.freeRam - (si.bufferRam || 0), available: si.freeRam + (si.bufferRam || 0), approximate: true };
       }
       const swap = host?.swap || (asterisk?.sysinfo ? { total: asterisk.sysinfo.totalSwap, used: asterisk.sysinfo.totalSwap - asterisk.sysinfo.freeSwap } : null);
-      this.latest = { at: Date.now(), method: settings().system.method, error: this.lastError, host, asterisk, memory, swap };
+      this.latest = { at: Date.now(), method: this.cfg().system.method, error: this.lastError, host, asterisk, memory, swap };
       this.history.push({ at: this.latest.at, cpu: host?.cpu ?? null, mem: memory ? Math.round((memory.used / memory.total) * 1000) / 10 : null, load: host?.load?.[0] ?? null });
       const cutoff = Date.now() - HISTORY * 1000;
       while (this.history.length && this.history[0].at < cutoff) this.history.shift();
@@ -173,7 +175,7 @@ export class SystemMonitor extends EventEmitter {
   }
 }
 
-export function sshExec(cfg, command, timeout = 15000) {
+export function sshExec(cfg, amiHost, command, timeout = 15000) {
   return new Promise((resolve, reject) => {
     const conn = new SshClient();
     let out = "";
@@ -184,7 +186,7 @@ export function sshExec(cfg, command, timeout = 15000) {
       stream.on("close", () => { clearTimeout(t); conn.end(); resolve(out); });
     }));
     conn.on("error", (e) => { clearTimeout(t); reject(new Error(`SSH: ${e.message}`)); });
-    conn.connect({ host: cfg.sshHost || settings().ami.host, port: Number(cfg.sshPort) || 22, username: cfg.sshUser,
+    conn.connect({ host: cfg.sshHost || amiHost, port: Number(cfg.sshPort) || 22, username: cfg.sshUser,
       password: cfg.sshPassword || undefined, privateKey: cfg.sshKey || undefined, readyTimeout: 10000 });
   });
 }

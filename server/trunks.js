@@ -1,7 +1,7 @@
 // chan_sip trunk definitions edited over AMI (GetConfig / UpdateConfig).
 // Only the panel's own file (default sip_custom.conf) is written; Issabel GUI trunks
 // live in sip_additional.conf, which Issabel regenerates, so they are shown read-only.
-import { pool, settings } from "./db.js";
+import { pool } from "./db.js";
 
 const NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,39}$/;
 const KEY = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
@@ -43,16 +43,15 @@ async function updateConfig(ami, filename, ops, reload = "chan_sip") {
   if (r.Response !== "Success") throw new Error(r.Message || "ذخیره تنظیمات در استریسک ناموفق بود");
 }
 
-async function backup(ami, filename, username, note) {
+async function backup(ami, filename, username, note, serverId = null) {
   try {
     const content = await getConfig(ami, filename);
-    await pool.query(`INSERT INTO config_backups (filename, content, username, note) VALUES ($1,$2,$3,$4)`,
-      [filename, JSON.stringify(content), username, note]);
+    await pool.query(`INSERT INTO config_backups (filename, content, username, note, server_id) VALUES ($1,$2,$3,$4,$5)`,
+      [filename, JSON.stringify(content), username, note, serverId]);
   } catch { /* file may not exist yet */ }
 }
 
-export async function listPanelTrunks(ami) {
-  const file = settings().dial.trunkConfigFile;
+export async function listPanelTrunks(ami, file) {
   const cats = await getConfig(ami, file);
   let registers = [];
   try {
@@ -89,14 +88,13 @@ function validate(t) {
   return { vars, register };
 }
 
-export async function saveTrunk(ami, t, username, originalName) {
+export async function saveTrunk(ami, file, t, username, originalName, serverId) {
   const { vars, register } = validate(t);
-  const file = settings().dial.trunkConfigFile;
-  const existing = await listPanelTrunks(ami);
+  const existing = await listPanelTrunks(ami, file);
   const oldName = originalName || t.name;
   if (!originalName && existing.some((e) => e.name === t.name)) throw Object.assign(new Error("ترانکی با این نام وجود دارد"), { status: 409 });
   if (originalName && originalName !== t.name && existing.some((e) => e.name === t.name)) throw Object.assign(new Error("ترانکی با این نام وجود دارد"), { status: 409 });
-  await backup(ami, file, username, `before save ${t.name}`);
+  await backup(ami, file, username, `before save ${t.name}`, serverId);
   const ops = [];
   if (existing.some((e) => e.name === oldName)) ops.push({ action: "DelCat", cat: oldName });
   ops.push({ action: "NewCat", cat: t.name });
@@ -104,7 +102,7 @@ export async function saveTrunk(ami, t, username, originalName) {
   await updateConfig(ami, file, ops);
   const prevRegister = existing.find((e) => e.name === oldName)?.register || "";
   if (prevRegister !== register) {
-    await backup(ami, "sip.conf", username, `before register change ${t.name}`);
+    await backup(ami, "sip.conf", username, `before register change ${t.name}`, serverId);
     const rops = [];
     if (prevRegister) rops.push({ action: "Delete", cat: "general", var: "register", match: prevRegister });
     if (register) rops.push({ action: "Append", cat: "general", var: "register", value: register });
@@ -113,12 +111,11 @@ export async function saveTrunk(ami, t, username, originalName) {
   await ami.command("sip reload").catch(() => {});
 }
 
-export async function deleteTrunk(ami, name, username) {
-  const file = settings().dial.trunkConfigFile;
-  const existing = await listPanelTrunks(ami);
+export async function deleteTrunk(ami, file, name, username, serverId) {
+  const existing = await listPanelTrunks(ami, file);
   const t = existing.find((e) => e.name === name);
   if (!t) throw Object.assign(new Error("این ترانک در فایل پنل نیست (ترانک‌های ایزابل را از خود ایزابل حذف کنید)"), { status: 404 });
-  await backup(ami, file, username, `before delete ${name}`);
+  await backup(ami, file, username, `before delete ${name}`, serverId);
   await updateConfig(ami, file, [{ action: "DelCat", cat: name }]);
   if (t.register) await updateConfig(ami, "sip.conf", [{ action: "Delete", cat: "general", var: "register", match: t.register }]);
   await ami.command("sip reload").catch(() => {});

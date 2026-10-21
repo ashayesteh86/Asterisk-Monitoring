@@ -69,12 +69,12 @@ export async function userFromRequest(req) {
 /** User with its access group flattened: perms[], scopes{}, isAdmin. */
 export async function loadUser(id) {
   const { rows } = await pool.query(`SELECT u.id, u.username, u.full_name, u.extension, u.active, u.group_id,
-      g.name AS group_name, g.is_admin, g.permissions, g.scopes
+      g.name AS group_name, g.is_admin, g.permissions, g.scopes, g.servers
     FROM users u LEFT JOIN access_groups g ON g.id = u.group_id WHERE u.id = $1`, [id]);
   const r = rows[0];
   if (!r?.active) return null;
   return { id: r.id, username: r.username, full_name: r.full_name, extension: r.extension, group_id: r.group_id,
-    group_name: r.group_name || "", isAdmin: !!r.is_admin, perms: r.permissions || [], scopes: r.scopes || {} };
+    group_name: r.group_name || "", isAdmin: !!r.is_admin, perms: r.permissions || [], scopes: r.scopes || {}, servers: r.servers || { mode: "all", ids: [] } };
 }
 
 export function forgetUser(id) { if (id === undefined) userCache.clear(); else userCache.delete(id); }

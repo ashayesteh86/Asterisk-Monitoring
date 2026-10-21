@@ -1,6 +1,6 @@
 // CDR reports with Shamsi (Jalali) date ranges: summary, daily/hourly charts, call list, per-extension, CSV export.
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../api.js";
+import { api, withServer } from "../api.js";
 import { useSession, useDial, can } from "../session.jsx";
 import { useLive } from "../live.js";
 import { fa, faNum, dur, durLong, jOf, fromJ, jString, parseJ, jFromSql, sqlDate, MONTHS, jalaaliMonthLength } from "../jalali.js";
@@ -74,7 +74,7 @@ export default function Reports() {
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-bold">گزارش تماس‌ها</h1>
         <div className="flex-1" />
-        {can(me.user, "reports.export") && <a className="btn btn-sm" href={`/api/cdr/export.csv?${query()}`}><Icon name="download" className="size-4" />خروجی Excel (CSV)</a>}
+        {can(me.user, "reports.export") && <a className="btn btn-sm" href={withServer(`/api/cdr/export.csv?${query()}`)}><Icon name="download" className="size-4" />خروجی Excel (CSV)</a>}
       </div>
 
       <div className="card space-y-3 p-4">

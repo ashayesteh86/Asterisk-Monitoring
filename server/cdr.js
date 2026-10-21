@@ -1,54 +1,21 @@
 // Call detail records from the Asterisk MySQL CDR database (Issabel/Elastix: asteriskcdrdb.cdr).
 import mysql from "mysql2/promise";
-import { settings } from "./db.js";
 import { SshTunnel, sshConfigFrom } from "./tunnel.js";
 
-let pool = null;
-let poolKey = "";
-let columns = null;
-let tunnel = null;
-
 /** Where mysql2 should connect: the server itself, or a local port tunnelled over SSH to it. */
-async function endpoint(c, sys, amiHost, keep) {
+async function endpoint(c, sys, amiHost) {
   if (c.via !== "ssh") return { host: c.host, port: Number(c.port) || 3306, tunnel: null };
   const t = new SshTunnel(sshConfigFrom(sys, amiHost), { host: c.host || "127.0.0.1", port: Number(c.port) || 3306 });
   try {
     await t.check();
     const port = await t.open();
-    if (keep) tunnel = t;
     return { host: "127.0.0.1", port, tunnel: t };
   } catch (err) { t.close(); throw err; }
 }
 
-async function getPool() {
-  const { cdr: c, system, ami } = settings();
-  if (!c.user || (c.via !== "ssh" && !c.host)) throw Object.assign(new Error("اتصال دیتابیس CDR در تنظیمات وارد نشده است"), { status: 400 });
-  const k = JSON.stringify([c, c.via === "ssh" ? [system.sshHost, system.sshPort, system.sshUser, system.sshPassword, system.sshKey, ami.host] : null]);
-  if (pool && k === poolKey) return pool;
-  resetCdrPool();
-  const ep = await endpoint(c, system, ami.host, true);
-  poolKey = k;
-  pool = mysql.createPool({ host: ep.host, port: ep.port, user: c.user, password: c.password, database: c.database,
-    connectionLimit: 4, connectTimeout: 8000, dateStrings: true, charset: "utf8mb4" });
-  return pool;
-}
-
-const table = () => {
-  const t = settings().cdr.table || "cdr";
-  if (!/^[A-Za-z0-9_]+$/.test(t)) throw new Error("نام جدول CDR نامعتبر است");
-  return "`" + t + "`";
-};
-
-async function getColumns() {
-  if (columns) return columns;
-  const [rows] = await (await getPool()).query(`SHOW COLUMNS FROM ${table()}`);
-  columns = new Set(rows.map((r) => r.Field));
-  return columns;
-}
-
-export async function testCdr(config) {
-  const { system, ami } = settings();
-  const ep = await endpoint(config, system, ami.host, false);
+/** Test a CDR config (unsaved form values) using the server's SSH settings for the tunnel. */
+export async function testCdr(config, system, amiHost) {
+  const ep = await endpoint(config, system, amiHost);
   let conn;
   try {
     conn = await mysql.createConnection({ host: ep.host, port: ep.port, user: config.user,
@@ -76,12 +43,6 @@ function mysqlError(err) {
   if (err.code === "ETIMEDOUT") return "اتصال به MySQL timeout شد (پورت بسته یا فایروال)";
   if (err.code === "PROTOCOL_CONNECTION_LOST") return "اتصال MySQL قطع شد (از طریق SSH: آدرس/پورت MySQL روی سرور را بررسی کنید)";
   return err.message;
-}
-
-export function resetCdrPool() {
-  pool?.end().catch(() => {});
-  tunnel?.close();
-  pool = null; poolKey = ""; columns = null; tunnel = null;
 }
 
 const EXT_CH = "'^(SIP|PJSIP|IAX2)/[0-9]{2,6}-'";
@@ -127,78 +88,122 @@ const directionOf = (r) => {
   return "other";
 };
 
-export async function listCdr(q) {
-  const cols = await getColumns();
-  const { sql, args } = where(q);
-  const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 500);
-  const offset = Math.max(Number(q.offset) || 0, 0);
-  const extra = ["recordingfile", "did", "cnum", "cnam", "linkedid", "userfield"].filter((c) => cols.has(c));
-  const sel = ["calldate", "clid", "src", "dst", "dcontext", "channel", "dstchannel", "lastapp", "lastdata", "duration", "billsec", "disposition", "uniqueid", ...extra]
-    .filter((c) => cols.has(c)).map((c) => "`" + c + "`").join(", ");
-  const sort = q.sort === "billsec" ? "billsec" : q.sort === "duration" ? "duration" : "calldate";
-  const dir = q.order === "asc" ? "ASC" : "DESC";
-  const p = await getPool();
-  const [[rows], [[count]]] = await Promise.all([
-    p.query(`SELECT ${sel} FROM ${table()} WHERE ${sql} ORDER BY ${sort} ${dir} LIMIT ? OFFSET ?`, [...args, limit, offset]),
-    p.query(`SELECT count(*) AS n FROM ${table()} WHERE ${sql}`, args),
-  ]);
-  const tpl = settings().dial.recordingUrl;
-  return {
-    total: Number(count.n),
-    rows: rows.map((r) => ({
-      ...r, direction: directionOf(r),
-      recordingUrl: tpl && r.recordingfile ? tpl.replace("{recordingfile}", encodeURIComponent(r.recordingfile))
-        .replace("{date}", String(r.calldate).slice(0, 10).replace(/-/g, "/")) : "",
-    })),
-  };
-}
-
-export async function cdrStats(q) {
-  const { sql, args } = where(q);
-  const p = await getPool();
-  const t = table();
-  const peerExpr = (col) => `SUBSTRING_INDEX(SUBSTRING_INDEX(${col}, '-', 1), '/', -1)`;
-  const [[[totals]], [byDay], [byHour], [outExt], [inExt], [topNumbers]] = await Promise.all([
-    p.query(`SELECT count(*) AS total,
-        SUM(disposition='ANSWERED') AS answered, SUM(disposition='NO ANSWER') AS noAnswer,
-        SUM(disposition='BUSY') AS busy, SUM(disposition IN ('FAILED','CONGESTION')) AS failed,
-        COALESCE(SUM(billsec),0) AS talk, COALESCE(AVG(CASE WHEN disposition='ANSWERED' THEN billsec END),0) AS avgTalk,
-        COALESCE(MAX(billsec),0) AS maxTalk,
-        SUM(${DIRECTION_SQL.inbound}) AS inbound, SUM(${DIRECTION_SQL.outbound}) AS outbound, SUM(${DIRECTION_SQL.internal}) AS internal
-      FROM ${t} WHERE ${sql}`, args),
-    p.query(`SELECT DATE_FORMAT(calldate, '%Y-%m-%d') AS day, count(*) AS total, SUM(disposition='ANSWERED') AS answered,
-        COALESCE(SUM(billsec),0) AS talk FROM ${t} WHERE ${sql} GROUP BY day ORDER BY day LIMIT 400`, args),
-    p.query(`SELECT HOUR(calldate) AS hour, count(*) AS total, SUM(disposition='ANSWERED') AS answered
-      FROM ${t} WHERE ${sql} GROUP BY hour ORDER BY hour`, args),
-    p.query(`SELECT ${peerExpr("channel")} AS ext, count(*) AS total, SUM(disposition='ANSWERED') AS answered, COALESCE(SUM(billsec),0) AS talk
-      FROM ${t} WHERE ${sql} AND channel REGEXP ${EXT_CH} GROUP BY ext`, args),
-    p.query(`SELECT ${peerExpr("dstchannel")} AS ext, count(*) AS total, SUM(disposition='ANSWERED') AS answered, COALESCE(SUM(billsec),0) AS talk
-      FROM ${t} WHERE ${sql} AND dstchannel REGEXP ${EXT_CH} GROUP BY ext`, args),
-    p.query(`SELECT src AS number, count(*) AS total, COALESCE(SUM(billsec),0) AS talk FROM ${t}
-      WHERE ${sql} AND ${DIRECTION_SQL.inbound} AND src <> '' GROUP BY src ORDER BY total DESC LIMIT 10`, args),
-  ]);
-  const TEXT = new Set(["number", "ext", "day"]);
-  const num = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, !TEXT.has(k) && typeof v === "string" && /^[\d.]+$/.test(v) ? Number(v) : v ?? 0]));
-  const exts = new Map();
-  for (const [rows, kind] of [[outExt, "out"], [inExt, "in"]]) for (const r of rows) {
-    const e = exts.get(r.ext) || { ext: r.ext, outTotal: 0, outAnswered: 0, outTalk: 0, inTotal: 0, inAnswered: 0, inTalk: 0 };
-    e[`${kind}Total`] = Number(r.total); e[`${kind}Answered`] = Number(r.answered); e[`${kind}Talk`] = Number(r.talk);
-    exts.set(r.ext, e);
+/** One PBX's CDR database: a lazily created mysql2 pool (optionally through an SSH tunnel). */
+export class CdrSource {
+  constructor(cfg) {
+    this.cfg = cfg; // () => {ami, cdr, dial, system}
+    this._pool = null;
+    this.poolKey = "";
+    this._columns = null;
+    this.tunnel = null;
   }
-  return {
-    totals: num(totals),
-    byDay: byDay.map(num),
-    byHour: byHour.map(num),
-    byExtension: [...exts.values()].sort((a, b) => b.inTotal + b.outTotal - a.inTotal - a.outTotal),
-    topNumbers: topNumbers.map(num),
-  };
-}
 
-/** Rows for CSV export (max 50k). */
-export async function exportCdr(q) {
-  const { sql, args } = where(q);
-  const [rows] = await (await getPool()).query(
-    `SELECT calldate, src, dst, clid, channel, dstchannel, disposition, duration, billsec, uniqueid FROM ${table()}
-     WHERE ${sql} ORDER BY calldate DESC LIMIT 50000`, args);
-  return rows.map((r) => ({ ...r, direction: directionOf(r) }));
+  async pool() {
+    const { cdr: c, system, ami } = this.cfg();
+    if (!c.user || (c.via !== "ssh" && !c.host)) throw Object.assign(new Error("اتصال دیتابیس CDR برای این سرور وارد نشده است"), { status: 400 });
+    const k = JSON.stringify([c, c.via === "ssh" ? [system.sshHost, system.sshPort, system.sshUser, system.sshPassword, system.sshKey, ami.host] : null]);
+    if (this._pool && k === this.poolKey) return this._pool;
+    this.reset();
+    const ep = await endpoint(c, system, ami.host);
+    this.tunnel = ep.tunnel;
+    this.poolKey = k;
+    this._pool = mysql.createPool({ host: ep.host, port: ep.port, user: c.user, password: c.password, database: c.database,
+      connectionLimit: 4, connectTimeout: 8000, dateStrings: true, charset: "utf8mb4" });
+    return this._pool;
+  }
+
+  reset() {
+    this._pool?.end().catch(() => {});
+    this.tunnel?.close();
+    this._pool = null; this.poolKey = ""; this._columns = null; this.tunnel = null;
+  }
+
+  table() {
+    const t = this.cfg().cdr.table || "cdr";
+    if (!/^[A-Za-z0-9_]+$/.test(t)) throw new Error("نام جدول CDR نامعتبر است");
+    return "`" + t + "`";
+  }
+
+  async columns() {
+    if (this._columns) return this._columns;
+    const [rows] = await (await this.pool()).query(`SHOW COLUMNS FROM ${this.table()}`);
+    this._columns = new Set(rows.map((r) => r.Field));
+    return this._columns;
+  }
+
+  async list(q) {
+    const cols = await this.columns();
+    const { sql, args } = where(q);
+    const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 500);
+    const offset = Math.max(Number(q.offset) || 0, 0);
+    const extra = ["recordingfile", "did", "cnum", "cnam", "linkedid", "userfield"].filter((c) => cols.has(c));
+    const sel = ["calldate", "clid", "src", "dst", "dcontext", "channel", "dstchannel", "lastapp", "lastdata", "duration", "billsec", "disposition", "uniqueid", ...extra]
+      .filter((c) => cols.has(c)).map((c) => "`" + c + "`").join(", ");
+    const sort = q.sort === "billsec" ? "billsec" : q.sort === "duration" ? "duration" : "calldate";
+    const dir = q.order === "asc" ? "ASC" : "DESC";
+    const p = await this.pool();
+    const [[rows], [[count]]] = await Promise.all([
+      p.query(`SELECT ${sel} FROM ${this.table()} WHERE ${sql} ORDER BY ${sort} ${dir} LIMIT ? OFFSET ?`, [...args, limit, offset]),
+      p.query(`SELECT count(*) AS n FROM ${this.table()} WHERE ${sql}`, args),
+    ]);
+    const tpl = this.cfg().dial.recordingUrl;
+    return {
+      total: Number(count.n),
+      rows: rows.map((r) => ({
+        ...r, direction: directionOf(r),
+        recordingUrl: tpl && r.recordingfile ? tpl.replace("{recordingfile}", encodeURIComponent(r.recordingfile))
+          .replace("{date}", String(r.calldate).slice(0, 10).replace(/-/g, "/")) : "",
+      })),
+    };
+  }
+
+  async stats(q) {
+    const { sql, args } = where(q);
+    const p = await this.pool();
+    const t = this.table();
+    const peerExpr = (col) => `SUBSTRING_INDEX(SUBSTRING_INDEX(${col}, '-', 1), '/', -1)`;
+    const [[[totals]], [byDay], [byHour], [outExt], [inExt], [topNumbers]] = await Promise.all([
+      p.query(`SELECT count(*) AS total,
+          SUM(disposition='ANSWERED') AS answered, SUM(disposition='NO ANSWER') AS noAnswer,
+          SUM(disposition='BUSY') AS busy, SUM(disposition IN ('FAILED','CONGESTION')) AS failed,
+          COALESCE(SUM(billsec),0) AS talk, COALESCE(AVG(CASE WHEN disposition='ANSWERED' THEN billsec END),0) AS avgTalk,
+          COALESCE(MAX(billsec),0) AS maxTalk,
+          SUM(${DIRECTION_SQL.inbound}) AS inbound, SUM(${DIRECTION_SQL.outbound}) AS outbound, SUM(${DIRECTION_SQL.internal}) AS internal
+        FROM ${t} WHERE ${sql}`, args),
+      p.query(`SELECT DATE_FORMAT(calldate, '%Y-%m-%d') AS day, count(*) AS total, SUM(disposition='ANSWERED') AS answered,
+          COALESCE(SUM(billsec),0) AS talk FROM ${t} WHERE ${sql} GROUP BY day ORDER BY day LIMIT 400`, args),
+      p.query(`SELECT HOUR(calldate) AS hour, count(*) AS total, SUM(disposition='ANSWERED') AS answered
+        FROM ${t} WHERE ${sql} GROUP BY hour ORDER BY hour`, args),
+      p.query(`SELECT ${peerExpr("channel")} AS ext, count(*) AS total, SUM(disposition='ANSWERED') AS answered, COALESCE(SUM(billsec),0) AS talk
+        FROM ${t} WHERE ${sql} AND channel REGEXP ${EXT_CH} GROUP BY ext`, args),
+      p.query(`SELECT ${peerExpr("dstchannel")} AS ext, count(*) AS total, SUM(disposition='ANSWERED') AS answered, COALESCE(SUM(billsec),0) AS talk
+        FROM ${t} WHERE ${sql} AND dstchannel REGEXP ${EXT_CH} GROUP BY ext`, args),
+      p.query(`SELECT src AS number, count(*) AS total, COALESCE(SUM(billsec),0) AS talk FROM ${t}
+        WHERE ${sql} AND ${DIRECTION_SQL.inbound} AND src <> '' GROUP BY src ORDER BY total DESC LIMIT 10`, args),
+    ]);
+    const TEXT = new Set(["number", "ext", "day"]);
+    const num = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, !TEXT.has(k) && typeof v === "string" && /^[\d.]+$/.test(v) ? Number(v) : v ?? 0]));
+    const exts = new Map();
+    for (const [rows, kind] of [[outExt, "out"], [inExt, "in"]]) for (const r of rows) {
+      const e = exts.get(r.ext) || { ext: r.ext, outTotal: 0, outAnswered: 0, outTalk: 0, inTotal: 0, inAnswered: 0, inTalk: 0 };
+      e[`${kind}Total`] = Number(r.total); e[`${kind}Answered`] = Number(r.answered); e[`${kind}Talk`] = Number(r.talk);
+      exts.set(r.ext, e);
+    }
+    return {
+      totals: num(totals),
+      byDay: byDay.map(num),
+      byHour: byHour.map(num),
+      byExtension: [...exts.values()].sort((a, b) => b.inTotal + b.outTotal - a.inTotal - a.outTotal),
+      topNumbers: topNumbers.map(num),
+    };
+  }
+
+  /** Rows for CSV export (max 50k). */
+  async export(q) {
+    const { sql, args } = where(q);
+    const [rows] = await (await this.pool()).query(
+      `SELECT calldate, src, dst, clid, channel, dstchannel, disposition, duration, billsec, uniqueid FROM ${this.table()}
+       WHERE ${sql} ORDER BY calldate DESC LIMIT 50000`, args);
+    return rows.map((r) => ({ ...r, direction: directionOf(r) }));
+  }
 }

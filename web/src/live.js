@@ -1,7 +1,9 @@
 // Live PBX state over WebSocket (snapshot + batched patches), exposed as a React hook.
 import { useSyncExternalStore } from "react";
 
-let state = { connected: false, ami: { status: "connecting" }, peers: {}, channels: {}, registrations: [], dahdi: [], queues: [] };
+const EMPTY = { connected: false, ami: { status: "connecting" }, peers: {}, channels: {}, registrations: [], dahdi: [], queues: [] };
+let state = { ...EMPTY, servers: null };
+let serverId = 0;
 const listeners = new Set();
 let ws = null;
 let retry = 1000;
@@ -30,10 +32,13 @@ function apply(items) {
 
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws = new WebSocket(`${proto}://${location.host}/ws${serverId ? `?server=${serverId}` : ""}`);
+  const mine = ws;
   ws.onopen = () => { retry = 1000; };
   ws.onmessage = (m) => {
+    if (mine !== ws) return;
     const msg = JSON.parse(m.data);
+    if (msg.type === "servers") { set({ servers: msg.data }); return; }
     if (msg.type === "snapshot") {
       const d = msg.data;
       set({
@@ -44,6 +49,7 @@ function connect() {
     } else if (msg.type === "batch") apply(msg.items);
   };
   ws.onclose = () => {
+    if (mine !== ws) return;
     set({ connected: false });
     if (!started) return;
     setTimeout(connect, retry);
@@ -51,7 +57,16 @@ function connect() {
   };
 }
 
-export function startLive() { if (started) return; started = true; connect(); }
+export function startLive(id) { serverId = Number(id) || 0; if (started) return; started = true; connect(); }
+/** Follow another PBX server: drop the old feed and state, connect again. */
+export function switchLive(id) {
+  serverId = Number(id) || 0;
+  set({ ...EMPTY });
+  if (!started) return;
+  const old = ws;
+  connect();
+  old?.close();
+}
 export function stopLive() { started = false; ws?.close(); }
 
 export function useLive(selector = (s) => s) {
