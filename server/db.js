@@ -4,6 +4,8 @@ import crypto from "node:crypto";
 
 // Day boundaries (today's peak, reports) follow the PBX's local time zone.
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 10, options: `-c TimeZone=${process.env.TZ || "Asia/Tehran"}` });
+// An idle client dropped by the server (Postgres restart, network) must not crash the panel; the pool reconnects on next use.
+pool.on("error", (err) => console.error(`[db] idle connection lost: ${err.message}`));
 
 // Append-only: never edit an applied migration, add a new one.
 const MIGRATIONS = [
