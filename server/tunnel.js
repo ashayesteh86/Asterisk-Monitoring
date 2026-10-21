@@ -45,7 +45,7 @@ export class SshTunnel {
     try {
       const c = await this.sshClient();
       c.forwardOut("127.0.0.1", 0, this.target.host, Number(this.target.port), (err, stream) => {
-        if (err) { this.lastError = err.message; return sock.destroy(); }
+        if (err) { this.lastError = err.reason === 1 ? "administratively prohibited" : err.message; return sock.destroy(); }
         stream.on("error", () => sock.destroy());
         sock.pipe(stream).pipe(sock);
       });

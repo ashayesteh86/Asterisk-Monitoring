@@ -58,6 +58,7 @@ export async function testCdr(config) {
     return { ok: true, count: Number(rows[0].n), last: rows[0].last };
   } catch (err) {
     const t = ep.tunnel?.lastError;
+    if (t === "administratively prohibited") throw new Error("اتصال SSH برقرار شد اما sshd سرور ایزابل تونل را رد کرد (AllowTcpForwarding no). در انتهای /etc/ssh/sshd_config برای همین کاربر بنویسید: Match User <کاربر> سپس AllowTcpForwarding yes و PermitOpen 127.0.0.1:3306، و sshd را ری‌استارت کنید");
     if (t && /Channel open failure/i.test(t)) throw new Error(`اتصال SSH برقرار شد اما سرور ایزابل نتوانست به MySQL روی ${config.host || "127.0.0.1"}:${Number(config.port) || 3306} وصل شود — ${/^(127\.0\.0\.1|localhost)$/.test(String(config.host || "127.0.0.1")) ? "پورت MySQL یا AllowTcpForwarding را بررسی کنید" : "آدرس MySQL را 127.0.0.1 بگذارید (MySQL ایزابل معمولاً فقط روی localhost گوش می‌دهد)"}`);
     throw new Error(t ? `SSH: ${t}` : mysqlError(err));
   } finally {
