@@ -143,7 +143,10 @@ function CdrForm({ value, sshUser, reload }) {
           )}
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label={ssh ? "آدرس MySQL روی سرور ایزابل" : "آدرس MySQL"} className="sm:col-span-2"><input className="input ltr text-left" {...bind("host")} placeholder={ssh ? "127.0.0.1" : "192.168.1.10"} /></Field>
+          <Field label={ssh ? "آدرس MySQL روی سرور ایزابل" : "آدرس MySQL"} className="sm:col-span-2"
+            hint={ssh && v.host && !/^(127\.0\.0\.1|localhost)$/.test(v.host.trim()) ? <span className="text-ring">در حالت SSH معمولاً باید 127.0.0.1 باشد؛ MySQL ایزابل فقط روی localhost گوش می‌دهد.</span> : null}>
+            <input className="input ltr text-left" {...bind("host")} placeholder={ssh ? "127.0.0.1" : "192.168.1.10"} />
+          </Field>
           <Field label="پورت"><input className="input ltr text-left" {...bind("port")} /></Field>
           <Field label="نام کاربری"><input className="input ltr text-left" {...bind("user")} autoComplete="off" /></Field>
           <Field label="رمز" hint={value.passwordSet ? "رمز ذخیره شده است" : ""}><input className="input ltr text-left" type="password" {...bind("password")} autoComplete="new-password" /></Field>
