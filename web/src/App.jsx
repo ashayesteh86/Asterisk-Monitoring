@@ -86,7 +86,7 @@ function Shell({ me, theme, setTheme, logout, children }) {
         <div className="flex items-center gap-2.5 px-5 py-5">
           <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-accent-ink"><Icon name="headset" /></div>
           <div>
-            <div className="text-sm font-bold">پنل اپراتور</div>
+            <div className="text-sm font-bold leading-5 ltr text-right">MahanAsterisk Monitoring</div>
             <div className="text-xs text-ink-3">Asterisk / Issabel</div>
           </div>
         </div>

@@ -18,7 +18,7 @@ export default function Login({ onLogin }) {
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-accent text-accent-ink"><Icon name="headset" className="size-7" /></div>
           <div>
-            <h1 className="text-lg font-bold">پنل اپراتور استریسک</h1>
+            <h1 className="text-lg font-bold ltr">MahanAsterisk Monitoring</h1>
             <p className="text-sm text-ink-3">برای ادامه وارد شوید</p>
           </div>
         </div>
