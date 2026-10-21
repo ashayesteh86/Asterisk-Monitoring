@@ -66,6 +66,8 @@ const DIAL_NUMBER = /^[0-9*#+]{1,32}$/;
 const EXT = /^[A-Za-z0-9_.-]{1,40}$/;
 
 app.get("/healthz", (req, res) => res.json({ ok: true, ami: ami.status }));
+// Public: the login page shows the server clock.
+app.get("/api/time", (req, res) => res.json({ now: Date.now(), tz: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Tehran" }));
 
 // ---------- auth ----------
 const loginAttempts = new Map();

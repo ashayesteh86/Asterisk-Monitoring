@@ -122,3 +122,8 @@ table.grid-table tr:hover td { background: var(--surface-2); }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 10px; border: 2px solid var(--bg); }
+
+/* login page backdrop: fixed dark-blue in both themes so the white clock reads well */
+.login-bg { background: radial-gradient(120% 90% at 85% 0%, #1d4f91 0%, transparent 60%), linear-gradient(160deg, #0b1830 0%, #0f2747 45%, #133763 100%); }
+.login-dots { background-image: radial-gradient(rgba(255,255,255,.09) 1px, transparent 1px); background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%); }
