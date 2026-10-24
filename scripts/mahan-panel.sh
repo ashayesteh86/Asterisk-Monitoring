@@ -12,6 +12,7 @@
 #
 # Settings for later runs (repo key, branch) are kept in <dir>/.mahan-panel.conf.
 set -euo pipefail
+umask 077  # secrets, backups and config written by this script are private
 
 DIR="/opt/mahanasterisk"
 PORT="3400"

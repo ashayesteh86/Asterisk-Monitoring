@@ -7,3 +7,4 @@ dist/
 .mahan-panel.conf
 node_modules/
 panel.env
+deploy-key-production.pub
