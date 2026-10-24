@@ -1,7 +1,7 @@
 // Live PBX state over WebSocket (snapshot + batched patches), exposed as a React hook.
 import { useSyncExternalStore } from "react";
 
-const EMPTY = { connected: false, ami: { status: "connecting" }, peers: {}, channels: {}, registrations: [], dahdi: [], queues: [], system: null };
+const EMPTY = { connected: false, ami: { status: "connecting" }, peers: {}, channels: {}, registrations: [], dahdi: [], queues: [], system: null, callcount: null };
 let state = { ...EMPTY, servers: null };
 let serverId = 0;
 const listeners = new Set();
@@ -24,6 +24,7 @@ function apply(items) {
       case "dahdi": extra.dahdi = it.data; break;
       case "queues": extra.queues = it.data; break;
       case "system": extra.system = it.data; break;
+      case "callcount": extra.callcount = it.data; break;
       case "ami": extra.ami = it.data; break;
       default: break;
     }

@@ -10,26 +10,34 @@ import { Icon } from "../components/ui.jsx";
 import LineChart, { hhmm } from "../components/LineChart.jsx";
 import BarChart from "../components/BarChart.jsx";
 
-const RANGES = [["1h", "۱ ساعت"], ["6h", "۶ ساعت"], ["24h", "۲۴ ساعت"], ["7d", "۷ روز"], ["30d", "۳۰ روز"]];
+const RANGES = [["live", "زنده"], ["1h", "۱ ساعت"], ["6h", "۶ ساعت"], ["24h", "۲۴ ساعت"], ["7d", "۷ روز"], ["30d", "۳۰ روز"]];
 
 export default function Dashboard() {
   const { me } = useSession();
   const peers = useLive((s) => s.peers);
   const channels = useLive((s) => s.channels);
   const queues = useLive((s) => s.queues);
-  const [range, setRange] = useState(() => { try { return localStorage.getItem("dash.range") || "6h"; } catch { return "6h"; } });
+  const [range, setRange] = useState(() => { try { return localStorage.getItem("dash.range") || "live"; } catch { return "live"; } });
+  const callcount = useLive((st) => st.callcount);
+  const [liveBuf, setLiveBuf] = useState([]); // points pushed every 2 s by the server
   const [data, setData] = useState(null);
   const [summary, setSummary] = useState(null);
   const liveSys = useLive((st) => st.system);
 
   useEffect(() => {
     let alive = true;
-    const load = () => api(`/api/dashboard/series?range=${range}`).then((d) => alive && setData(d)).catch(() => {});
+    const load = () => api(`/api/dashboard/series?range=${range === "live" ? "10m" : range}`).then((d) => alive && setData(d)).catch(() => {});
     load();
-    const t = setInterval(load, range === "1h" || range === "6h" ? 10000 : 60000);
+    // the live view only needs the 10-minute backfill once; pushes keep it moving
+    const t = range === "live" ? null : setInterval(load, range === "1h" || range === "6h" ? 10000 : 60000);
     try { localStorage.setItem("dash.range", range); } catch { /* ignore */ }
     return () => { alive = false; clearInterval(t); };
   }, [range]);
+  useEffect(() => {
+    if (!callcount) return;
+    const p = { t: callcount.t, peak: callcount.total, inbound: callcount.inbound, outbound: callcount.outbound, internal: callcount.internal, waiting: callcount.waiting };
+    setLiveBuf((b) => (b.length && b[b.length - 1].t >= p.t ? b : [...b.filter((x) => x.t > p.t - 10 * 60e3), p]));
+  }, [callcount?.t]);
   useEffect(() => {
     const load = () => {
       api("/api/dashboard/summary").then(setSummary).catch(() => {});
@@ -52,13 +60,20 @@ export default function Dashboard() {
   const waiting = queues.reduce((s, q) => s + q.entries.length, 0);
 
   const long = range === "7d" || range === "30d";
+  const isLive = range === "live";
   const xLabel = (t) => { if (!long) return hhmm(t); const j = jOf(new Date(t)); return fa(`${j.jm}/${j.jd}`); };
-  const title = (p) => { const d = new Date(p.t); const j = jOf(d); return fa(`${j.jd} ${MONTHS[j.jm - 1]} — ${d.toTimeString().slice(0, 5)}`); };
+  const title = (p) => { const d = new Date(p.t); const j = jOf(d); return fa(`${j.jd} ${MONTHS[j.jm - 1]} — ${d.toTimeString().slice(0, isLive ? 8 : 5)}`); };
   const pts = useMemo(() => {
     const list = data?.points || [];
-    // append the live value so the chart ends "now"
-    return list.length ? [...list, { t: Date.now(), peak: live.total, inbound: live.inbound, outbound: live.outbound, internal: live.internal }] : list;
-  }, [data, live]);
+    if (isLive) {
+      // stored 10 s peaks up to the first live push, then every 2 s point the server sent
+      const first = liveBuf[0]?.t ?? Infinity;
+      return [...list.filter((p) => p.t < first && p.t > Date.now() - 10 * 60e3), ...liveBuf];
+    }
+    const last = liveBuf[liveBuf.length - 1];
+    return list.length && last ? [...list, last] : list;
+  }, [data, liveBuf, isLive]);
+  const nowCount = liveBuf[liveBuf.length - 1];
 
   const t = summary?.cdr?.totals;
   return (
@@ -79,6 +94,8 @@ export default function Dashboard() {
       <div className="card p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <h2 className="text-sm font-semibold">تعداد تماس‌های همزمان (آنلاین)</h2>
+          {nowCount && <LiveBadge age={Math.max(0, Math.round((Date.now() - nowCount.t) / 1000))} />}
+          {nowCount && <span className="num text-sm">اکنون: <b>{faNum(nowCount.peak)}</b> تماس</span>}
           {summary?.peaks && (
             <span className="text-xs text-ink-3">
               اوج امروز: <b className="num text-ink">{faNum(summary.peaks.today || 0)}</b>
@@ -92,7 +109,7 @@ export default function Dashboard() {
           </div>
         </div>
         <LineChart points={pts} xLabel={xLabel} tooltipTitle={title} height={260} series={[
-          { key: "peak", label: "کل تماس‌ها (حداکثر در بازه)", color: "var(--series-1)", area: true },
+          { key: "peak", label: isLive ? "کل تماس‌ها" : "کل تماس‌ها (حداکثر در بازه)", color: "var(--series-1)", area: true },
           { key: "inbound", label: "ورودی", color: "var(--series-2)" },
           { key: "outbound", label: "خروجی", color: "var(--series-3)" },
         ]} />

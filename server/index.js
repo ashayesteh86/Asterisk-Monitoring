@@ -811,6 +811,7 @@ function flush() {
           case "registrations": case "dahdi": if (can(u, "trunks.view")) out.push(it); break;
           case "queues": out.push({ type: "queues", data: queueView(u, it.data) }); break;
           case "system": if (can(u, "system.view")) out.push(it); break;
+          case "callcount": if (can(u, "dashboard.view")) out.push(it); break;
           default: out.push(it);
         }
       }

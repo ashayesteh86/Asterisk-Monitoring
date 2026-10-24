@@ -24,7 +24,7 @@ export class ServerRuntime {
     this.ssh = new SshConnection(() => sshConfigFrom(this.cfg().system, this.cfg().ami.host));
     this.system = new SystemMonitor(this.ami, this.cfg, this.ssh);
     this.cdr = new CdrSource(this.cfg);
-    this.stopSampler = startSampler(id, this.pbx, this.queues);
+    this.stopSampler = startSampler(id, this.pbx, this.queues, (data) => hub.emit("change", id, { type: "callcount", data }));
     this.pbx.on("change", (item) => hub.emit("change", id, item));
     this.queues.on("change", (item) => hub.emit("change", id, item));
     this.ami.on("status", () => hub.emit("status", id));
