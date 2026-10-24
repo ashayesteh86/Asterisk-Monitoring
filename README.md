@@ -1,5 +1,27 @@
 # MahanAsterisk Monitoring
 
+<p align="center"><img src="docs/screenshots/02-dashboard.png" alt="MahanAsterisk Monitoring dashboard" width="900"></p>
+
+**English:** a Persian (RTL) web operator panel and monitoring dashboard for **any Asterisk-based PBX** — plain Asterisk, Issabel, FreePBX, Elastix, VitalPBX — connected over **AMI** (Asterisk 1.8 → 20+, chan_sip and PJSIP). Live extension board with phone models, live calls with listen / whisper / barge and hang-up, queue monitoring, trunk management, server health (CPU / RAM / disk / services), phonebook with click-to-dial, web dial pad, CDR reports with a Jalali calendar and call-recording playback, several PBX servers in one panel, and access groups with per-section extension scopes. Node.js + PostgreSQL + React, deployed with Docker (`scripts/mahan-panel.sh install`).
+
+## تصاویر
+
+<table>
+<tr><td width="50%"><a href="docs/screenshots/02-dashboard.png"><img src="docs/screenshots/02-dashboard.png" alt="Dashboard — live concurrent calls"></a><br><sub>داشبورد — نمودار زنده تماس همزمان · Dashboard — live concurrent calls</sub></td><td width="50%"><a href="docs/screenshots/03-operator-panel.png"><img src="docs/screenshots/03-operator-panel.png" alt="Operator panel with phone models"></a><br><sub>پنل اپراتور با مدل تلفن‌ها · Operator panel with phone models</sub></td></tr>
+<tr><td width="50%"><a href="docs/screenshots/05-live-calls.png"><img src="docs/screenshots/05-live-calls.png" alt="Live calls — listen, whisper, hang up"></a><br><sub>تماس‌های آنلاین — شنود، نجوا، قطع · Live calls — listen, whisper, hang up</sub></td><td width="50%"><a href="docs/screenshots/06-queues.png"><img src="docs/screenshots/06-queues.png" alt="Queue monitoring"></a><br><sub>مانیتورینگ صف · Queue monitoring</sub></td></tr>
+<tr><td width="50%"><a href="docs/screenshots/07-server-status.png"><img src="docs/screenshots/07-server-status.png" alt="Server health"></a><br><sub>وضعیت سرور (CPU، RAM، دیسک، سرویس‌ها) · Server health</sub></td><td width="50%"><a href="docs/screenshots/08-reports.png"><img src="docs/screenshots/08-reports.png" alt="Call reports (Jalali calendar)"></a><br><sub>گزارش تماس‌ها با تقویم شمسی · Call reports (Jalali calendar)</sub></td></tr>
+<tr><td width="50%"><a href="docs/screenshots/09-call-list.png"><img src="docs/screenshots/09-call-list.png" alt="Call list with recordings"></a><br><sub>لیست تماس‌ها و پخش ضبط مکالمه · Call list with recordings</sub></td><td width="50%"><a href="docs/screenshots/10-all-servers.png"><img src="docs/screenshots/10-all-servers.png" alt="Multiple PBX servers"></a><br><sub>چند سرور در یک پنل · Multiple PBX servers</sub></td></tr>
+<tr><td width="50%"><a href="docs/screenshots/11-trunks.png"><img src="docs/screenshots/11-trunks.png" alt="Trunks and E1 channels"></a><br><sub>ترانک‌ها و کانال‌های E1 · Trunks and E1 channels</sub></td><td width="50%"><a href="docs/screenshots/12-dialpad.png"><img src="docs/screenshots/12-dialpad.png" alt="Web dial pad"></a><br><sub>شماره‌گیر وب و Click-to-Dial · Web dial pad</sub></td></tr>
+<tr><td width="50%"><a href="docs/screenshots/13-access-group.png"><img src="docs/screenshots/13-access-group.png" alt="Access groups and extension scopes"></a><br><sub>گروه‌های دسترسی و محدوده داخلی‌ها · Access groups and extension scopes</sub></td><td width="50%"><a href="docs/screenshots/14-dashboard-dark.png"><img src="docs/screenshots/14-dashboard-dark.png" alt="Dark theme"></a><br><sub>پوسته تیره · Dark theme</sub></td></tr>
+</table>
+
+<details><summary>صفحه ورود و نسخه موبایل</summary>
+
+<p><img src="docs/screenshots/01-login.png" alt="Login" width="640"> <img src="docs/screenshots/15-mobile.png" alt="Mobile" width="240"></p>
+</details>
+
+> تصاویر از نسخه آزمایشی با استریسک شبیه‌سازی‌شده و داده‌های ساختگی گرفته شده‌اند.
+
 پنل تحت وب فارسی (RTL) برای **همه سیستم‌های مبتنی بر Asterisk** (Asterisk خام، Issabel، FreePBX، Elastix، VitalPBX و …). همه چیز را از طریق **AMI** می‌گیرد و گزارش‌ها را از دیتابیس **CDR (MySQL/MariaDB)** سرور می‌خواند.
 
 ## امکانات
@@ -29,15 +51,15 @@
    [panel]
    secret = یک-رمز-قوی
    deny = 0.0.0.0/0.0.0.0
-   permit = 192.168.81.29/255.255.255.255
+   permit = PANEL_IP/255.255.255.255
    read = system,call,agent,user,config,command,reporting,originate
    write = system,call,agent,user,config,command,reporting,originate
    ```
    سپس `asterisk -rx "manager reload"`. پورت ۵۰۳۸ را فقط برای IP پنل باز کنید.
 2. کاربر فقط‌خواندنی CDR در MySQL/MariaDB سرور (در Issabel/FreePBX دیتابیس `asteriskcdrdb`). اگر نمی‌خواهید پورت ۳۳۰۶ را باز کنید، در «تنظیمات › دیتابیس CDR» نوع اتصال را **از طریق SSH** بگذارید؛ پنل از همان کاربر SSH «مانیتورینگ سرور» تونل می‌زند و کاربر MySQL را برای `localhost` و `127.0.0.1` بسازید (مرحله `bind-address`/فایروال لازم نیست). اگر در `sshd_config` مقدار `AllowTcpForwarding no` است، در انتهای فایل اضافه کنید: `Match User panelmon` و زیر آن `AllowTcpForwarding yes` و `PermitOpen 127.0.0.1:3306`. در حالت مستقیم:
    ```sql
-   CREATE USER 'panel'@'192.168.81.29' IDENTIFIED BY 'رمز';
-   GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'192.168.81.29';
+   CREATE USER 'panel'@'PANEL_IP' IDENTIFIED BY 'STRONG_PASSWORD';
+   GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'PANEL_IP';
    ```
    و اجازه اتصال از شبکه (`bind-address` و فایروال پورت ۳۳۰۶ فقط برای IP پنل).
 3. پاسخ خودکار (اختیاری) برای Click-to-Dial و شنود: در تنظیمات › شماره‌گیری فعال کنید (هدر `Call-Info: answer-after=0` و `Alert-Info`).
@@ -56,10 +78,10 @@ npm test
 
 اسکریپت `scripts/mahan-panel.sh` نصب، به‌روزرسانی، پشتیبان‌گیری و بازیابی را با Docker انجام می‌دهد (Ubuntu / Debian / Rocky / Alma …).
 
-**نصب روی سرور جدید** (کلید Deploy این سرور باید در GitHub اضافه شده باشد):
+**نصب روی سرور جدید:**
 
 ```bash
-git clone git@github.com:ashayesteh86/Asterisk-Monitoring.git /opt/mahanasterisk
+git clone https://github.com/ashayesteh86/Asterisk-Monitoring.git /opt/mahanasterisk
 sudo /opt/mahanasterisk/scripts/mahan-panel.sh install
 ```
 

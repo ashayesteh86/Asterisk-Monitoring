@@ -3,7 +3,6 @@
 // Login: admin / mock.  Optional MOCK_CDR=mysql://user:pass@host/db writes a CDR row per finished call.
 import net from "node:net";
 import mysql from "mysql2/promise";
-import { execSync } from "node:child_process";
 
 const VERSION = process.env.MOCK_VERSION || "11";
 const LEGACY = Number(VERSION) < 12;
@@ -436,14 +435,30 @@ function handle(client, a) {
       const m = /^SHELL\((.*)\)$/s.exec(a.Variable || "");
       if (!m) return ok({ Variable: a.Variable, Value: "" });
       if (!LEGACY && !process.env.MOCK_LIVE_DANGEROUSLY) return err("Function SHELL cannot be read from an external source; live_dangerously is disabled");
-      let out = "";
-      try { out = execSync(m[1], { shell: "/bin/sh", timeout: 5000 }).toString().replace(/[\r\n]+/g, ";"); } catch { out = ""; }
-      ok({ Variable: a.Variable, Value: out.slice(0, 1023) });
+      // synthetic host metrics: demo values instead of the machine the mock runs on
+      ok({ Variable: a.Variable, Value: fakeMetrics() });
       break;
     }
     case "Logoff": ok({ Message: "Thanks for all the fish." }); client.sock.end(); break;
     default: err("Invalid/unknown command");
   }
+}
+
+let cpuT = 0;
+function fakeMetrics() {
+  const busy = 0.08 + 0.12 * Math.abs(Math.sin(Date.now() / 60000)) + channels.size * 0.004;
+  const idle1 = 9_000_000 + cpuT * 800, total1 = idle1 / (1 - busy) ;
+  cpuT++;
+  const line = (idle, total) => `cpu  ${Math.round(total - idle)} 0 0 ${Math.round(idle)} 0 0 0 0 0 0`;
+  const kb = (gb) => Math.round(gb * 1024 * 1024);
+  return [
+    "up=1049122.5", `load=${(busy * 4).toFixed(2)} ${(busy * 3.5).toFixed(2)} ${(busy * 3).toFixed(2)}`, "ncpu=8", "host=pbx-demo 5.10.0",
+    line(idle1, total1), line(idle1 + 790, total1 + 800 + 800 * busy / (1 - busy)),
+    `MemTotal:${kb(16)}`, "MemFree:4194304", `MemAvailable:${kb(10.2 - channels.size * 0.01)}`, "Buffers:262144", "Cached:4194304", `SwapTotal:${kb(4)}`, `SwapFree:${kb(3.9)}`,
+    `disk=/:${kb(200)}:${kb(71.5)}`, `disk=/var/spool/asterisk:${kb(500)}:${kb(212)}`, `disk=/boot:${kb(1)}:${kb(0.2)}`,
+    "svc=asterisk:up", "svc=mysqld:up", "svc=httpd:up", "svc=fail2ban-server:up", "svc=sshd:up", "svc=crond:up",
+    `astp=${(busy * 30).toFixed(1)}:${Math.round(380 * 1024 + channels.size * 900)}`,
+  ].join(";");
 }
 
 net.createServer((sock) => {

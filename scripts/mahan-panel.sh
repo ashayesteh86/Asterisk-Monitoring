@@ -16,7 +16,7 @@ umask 077  # secrets, backups and config written by this script are private
 
 DIR="/opt/mahanasterisk"
 PORT="3400"
-REPO="git@github.com:ashayesteh86/Asterisk-Monitoring.git"
+REPO="https://github.com/ashayesteh86/Asterisk-Monitoring.git"
 KEY=""
 BRANCH="main"
 TZ_NAME=""
