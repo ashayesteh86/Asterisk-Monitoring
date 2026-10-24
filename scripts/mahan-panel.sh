@@ -35,6 +35,7 @@ die()  { echo "${c_red}✘ $*${c_off}" >&2; exit 1; }
 usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 CMD="${1:-}"; [ -n "$CMD" ] || usage 1; shift || true
+ORIG_ARGS=("$@")
 ARG=""
 DIR_SET=0
 parse() {
@@ -66,6 +67,15 @@ CONF="$DIR/.mahan-panel.conf"
 # shellcheck disable=SC1090
 if [ -f "$CONF" ]; then . "$CONF"; parse "$@"; fi
 if [ -z "$HEALTH_URL" ]; then HEALTH_URL="http://127.0.0.1:${PORT}/healthz"; fi
+
+# "update" pulls a new copy of this very file; bash reads scripts while running them,
+# so continue from a private copy and leave the real file free to change.
+if [ "$CMD" = "update" ] && [ -z "${MAHAN_SELF_COPY:-}" ]; then
+  self="$(mktemp /tmp/mahan-panel.XXXXXX)"
+  cp "$0" "$self"
+  MAHAN_SELF_COPY="$self" exec bash "$self" update --dir "$DIR" "${ORIG_ARGS[@]}"
+fi
+if [ -n "${MAHAN_SELF_COPY:-}" ]; then trap 'rm -f "$MAHAN_SELF_COPY"' EXIT; fi
 
 confirm() {
   [ "$YES" -eq 1 ] && return 0
