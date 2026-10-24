@@ -141,3 +141,11 @@ setfacl -R -d -m u:panelmon:rX /var/spool/asterisk/monitor
 - ترانک‌هایی که در رابط مدیریتی سرور ساخته شده‌اند (مثلاً `sip_additional.conf` در Issabel/FreePBX) فقط نمایش داده می‌شوند، چون همان رابط آن فایل را بازنویسی می‌کند.
 - رشته `register` ترانک در بخش `[general]` فایل `sip.conf` افزوده می‌شود؛ پیش از هر تغییر نسخه پشتیبان در «ترانک‌ها › نسخه‌های پشتیبان» ذخیره می‌شود. ابتدا روی سرور غیرعملیاتی امتحان کنید.
 - شنود مکالمه ممکن است الزامات قانونی/اطلاع‌رسانی داشته باشد؛ دسترسی آن فقط برای نقش سرپرست/مدیر است و ثبت می‌شود.
+
+## مجوز (License)
+
+Copyright © 2026 Mahanet Computer Trading
+
+این برنامه نرم‌افزار آزاد است و تحت **GNU General Public License نسخه ۳** (یا به انتخاب شما هر نسخه بعدی) منتشر می‌شود. می‌توانید آن را استفاده، تغییر و بازتوزیع کنید، به این شرط که نسخه تغییریافته را هم با همین مجوز و همراه کد منبع منتشر کنید. متن کامل: [LICENSE](LICENSE).
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but **without any warranty**; see the [LICENSE](LICENSE) file for details.
