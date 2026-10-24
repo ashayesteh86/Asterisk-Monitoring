@@ -1,6 +1,6 @@
 # MahanAsterisk Monitoring
 
-پنل تحت وب فارسی (RTL) که همه چیز را از طریق **AMI** از استریسک می‌گیرد و گزارش‌ها را از دیتابیس **CDR (MySQL)** ایزابل می‌خواند.
+پنل تحت وب فارسی (RTL) برای **همه سیستم‌های مبتنی بر Asterisk** (Asterisk خام، Issabel، FreePBX، Elastix، VitalPBX و …). همه چیز را از طریق **AMI** می‌گیرد و گزارش‌ها را از دیتابیس **CDR (MySQL/MariaDB)** سرور می‌خواند.
 
 ## امکانات
 
@@ -18,13 +18,13 @@
 | وضعیت سرور | CPU، RAM، Swap، دیسک‌ها، Load، آپتایم سرور و استریسک، سرویس‌ها (asterisk، mysql، httpd، fail2ban…)، نمودار ۶ ساعته؛ از طریق AMI (`SHELL()` با `live_dangerously`) یا SSH. |
 | تنظیمات | اتصال AMI و CDR با دکمه تست، نوع کانال، context، الگوی داخلی به نحو Dialplan (`_XXX`)، پاسخ خودکار، مانیتورینگ سرور، گروه‌های دسترسی، کاربران، لاگ رخدادها. |
 
-نسخه‌های پشتیبانی‌شده: Asterisk 1.8 / 11 (Elastix، Issabel 2) و 13 / 16 / 18+ (Issabel 4، FreePBX). نسخه خودکار از `CoreSettings` تشخیص داده می‌شود.
+نسخه‌های پشتیبانی‌شده: Asterisk 1.8 / 11 (مثلاً Elastix، Issabel 2) و 13 / 16 / 18 / 20+ (مثلاً Issabel 4، FreePBX، VitalPBX، Asterisk خام) با chan_sip یا PJSIP. نسخه خودکار از `CoreSettings` تشخیص داده می‌شود.
 
 نقش‌ها: **اپراتور** (فقط داخلی خودش در تماس و گزارش)، **سرپرست** (شنود، قطع، انتقال، تماس از هر داخلی)، **مدیر** (همه چیز + تنظیمات و ترانک‌ها).
 
-## آماده‌سازی سرور ایزابل
+## آماده‌سازی سرور استریسک
 
-1. کاربر AMI در `/etc/asterisk/manager_custom.conf`:
+1. کاربر AMI در `/etc/asterisk/manager_custom.conf` (Issabel / FreePBX / Elastix) یا `/etc/asterisk/manager.conf` (Asterisk خام، با `enabled = yes` در بخش `[general]`):
    ```ini
    [panel]
    secret = یک-رمز-قوی
@@ -34,7 +34,7 @@
    write = system,call,agent,user,config,command,reporting,originate
    ```
    سپس `asterisk -rx "manager reload"`. پورت ۵۰۳۸ را فقط برای IP پنل باز کنید.
-2. کاربر فقط‌خواندنی CDR در MariaDB ایزابل. اگر نمی‌خواهید پورت ۳۳۰۶ را باز کنید، در «تنظیمات › دیتابیس CDR» نوع اتصال را **از طریق SSH** بگذارید؛ پنل از همان کاربر SSH «مانیتورینگ سرور» تونل می‌زند و کاربر MySQL را برای `localhost` و `127.0.0.1` بسازید (مرحله `bind-address`/فایروال لازم نیست). اگر در `sshd_config` مقدار `AllowTcpForwarding no` است، در انتهای فایل اضافه کنید: `Match User panelmon` و زیر آن `AllowTcpForwarding yes` و `PermitOpen 127.0.0.1:3306`. در حالت مستقیم:
+2. کاربر فقط‌خواندنی CDR در MySQL/MariaDB سرور (در Issabel/FreePBX دیتابیس `asteriskcdrdb`). اگر نمی‌خواهید پورت ۳۳۰۶ را باز کنید، در «تنظیمات › دیتابیس CDR» نوع اتصال را **از طریق SSH** بگذارید؛ پنل از همان کاربر SSH «مانیتورینگ سرور» تونل می‌زند و کاربر MySQL را برای `localhost` و `127.0.0.1` بسازید (مرحله `bind-address`/فایروال لازم نیست). اگر در `sshd_config` مقدار `AllowTcpForwarding no` است، در انتهای فایل اضافه کنید: `Match User panelmon` و زیر آن `AllowTcpForwarding yes` و `PermitOpen 127.0.0.1:3306`. در حالت مستقیم:
    ```sql
    CREATE USER 'panel'@'192.168.81.29' IDENTIFIED BY 'رمز';
    GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'192.168.81.29';
@@ -52,18 +52,32 @@ npm run mock:ami       # استریسک شبیه‌سازی‌شده روی 127.
 npm test
 ```
 
-## استقرار با Docker
+## نصب و به‌روزرسانی (اسکریپت آماده)
+
+اسکریپت `scripts/mahan-panel.sh` نصب، به‌روزرسانی، پشتیبان‌گیری و بازیابی را با Docker انجام می‌دهد (Ubuntu / Debian / Rocky / Alma …).
+
+**نصب روی سرور جدید** (کلید Deploy این سرور باید در GitHub اضافه شده باشد):
 
 ```bash
-# panel.env:  APP_SECRET=...  ADMIN_USERNAME=admin  ADMIN_PASSWORD=...
-POSTGRES_PASSWORD=... docker compose -f compose.production.yml up -d --build
+git clone git@github.com:ashayesteh86/Asterisk-Monitoring.git /opt/mahanasterisk
+sudo /opt/mahanasterisk/scripts/mahan-panel.sh install
 ```
 
-پس از ورود، تنظیمات AMI و CDR را از صفحه «تنظیمات» وارد کنید (رمزها رمزنگاری‌شده در دیتابیس پنل ذخیره می‌شوند).
+اگر Docker نصب نباشد، با تأیید شما نصب می‌شود؛ `panel.env` و `.env` با رمزهای تصادفی ساخته می‌شوند، کانتینرها بالا می‌آیند و آدرس و رمز اولیه admin چاپ می‌شود. گزینه‌ها: `--port 3400`، `--dir /opt/mahanasterisk`، `--key ~/.ssh/deploy_key`، `--branch main`، `-y` (بدون سؤال).
+
+| دستور | کار |
+|---|---|
+| `sudo …/mahan-panel.sh update` | دریافت آخرین نسخه، پشتیبان دیتابیس، ساخت دوباره، بررسی سلامت و **برگشت خودکار به نسخه قبل** اگر بالا نیامد |
+| `sudo …/mahan-panel.sh backup` | پشتیبان دیتابیس در `backups/` (۱۴ نسخه آخر نگه داشته می‌شود) |
+| `sudo …/mahan-panel.sh restore <file.dump>` | بازیابی دیتابیس (قبلش پشتیبان گرفته می‌شود) |
+| `sudo …/mahan-panel.sh status` / `logs` / `restart` | وضعیت، لاگ زنده، ری‌استارت |
+| `sudo …/mahan-panel.sh admin-password` | رمز جدید تصادفی برای کاربر admin (اگر رمز فراموش شد) |
+
+`APP_SECRET` در `panel.env` را نگه دارید و عوض نکنید؛ رمزهای AMI / MySQL / SSH سرورها با آن رمزنگاری شده‌اند.
 
 ## چند سرور
 
-پنل می‌تواند به چند سرور استریسک/ایزابل هم‌زمان وصل باشد. هر سرور در «تنظیمات › سرورهای استریسک» تعریف می‌شود و تنظیمات AMI، دیتابیس CDR (مستقیم یا SSH)، شماره‌گیری و مانیتورینگ جداگانه دارد.
+پنل می‌تواند به چند سرور مبتنی بر Asterisk هم‌زمان وصل باشد (می‌توانند از انواع مختلف باشند). هر سرور در «تنظیمات › سرورهای استریسک» تعریف می‌شود و تنظیمات AMI، دیتابیس CDR (مستقیم یا SSH)، شماره‌گیری و مانیتورینگ جداگانه دارد.
 
 - در بالای منوی کناری، سرور فعلی انتخاب می‌شود؛ همه صفحه‌ها (داشبورد، پنل، تماس‌ها، صف، ترانک، وضعیت سرور، گزارش) اطلاعات همان سرور را نشان می‌دهند. انتخاب در مرورگر به خاطر سپرده می‌شود.
 - صفحه «همه سرورها» وضعیت اتصال، تماس همزمان، داخلی‌های آنلاین، ترانک‌ها، صف‌ها و سلامت سرور همه سرورها را کنار هم نشان می‌دهد.
@@ -93,6 +107,6 @@ setfacl -R -d -m u:panelmon:rX /var/spool/asterisk/monitor
 
 ## نکات
 
-- ترانک‌هایی که در رابط ایزابل ساخته شده‌اند (`sip_additional.conf`) فقط نمایش داده می‌شوند، چون ایزابل آن فایل را بازنویسی می‌کند.
+- ترانک‌هایی که در رابط مدیریتی سرور ساخته شده‌اند (مثلاً `sip_additional.conf` در Issabel/FreePBX) فقط نمایش داده می‌شوند، چون همان رابط آن فایل را بازنویسی می‌کند.
 - رشته `register` ترانک در بخش `[general]` فایل `sip.conf` افزوده می‌شود؛ پیش از هر تغییر نسخه پشتیبان در «ترانک‌ها › نسخه‌های پشتیبان» ذخیره می‌شود. ابتدا روی سرور غیرعملیاتی امتحان کنید.
 - شنود مکالمه ممکن است الزامات قانونی/اطلاع‌رسانی داشته باشد؛ دسترسی آن فقط برای نقش سرپرست/مدیر است و ثبت می‌شود.

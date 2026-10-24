@@ -1,6 +1,9 @@
-node_modules/
-dist/
-.env.local
-panel.env
-*.log
+backups/
 deploy-key.pub
+dist/
+.env
+.env.local
+*.log
+.mahan-panel.conf
+node_modules/
+panel.env

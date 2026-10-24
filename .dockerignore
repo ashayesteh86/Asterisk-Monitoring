@@ -1,6 +1,9 @@
-node_modules
+backups
 dist
+.env
 .env.local
-panel.env
 .git
+.mahan-panel.conf
+node_modules
+panel.env
 test

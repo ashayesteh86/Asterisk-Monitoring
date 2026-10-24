@@ -173,7 +173,7 @@ function Shell({ me, nav, servers, server, selectServer, theme, setTheme, logout
           <div className="flex size-9 items-center justify-center rounded-xl bg-accent text-accent-ink"><Icon name="headset" /></div>
           <div>
             <div className="text-sm font-bold leading-5 ltr text-right">MahanAsterisk Monitoring</div>
-            <div className="text-xs text-ink-3">Asterisk / Issabel</div>
+            <div className="text-xs text-ink-3">Asterisk-based PBX</div>
           </div>
         </div>
         <ServerPicker servers={servers} server={server} selectServer={selectServer} />

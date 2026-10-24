@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "MahanAsterisk Monitoring — پنل مانیتورینگ و اپراتور استریسک (Issabel/Elastix) از طریق AMI",
+  "description": "MahanAsterisk Monitoring — پنل مانیتورینگ و اپراتور برای همه سیستم‌های مبتنی بر Asterisk (Asterisk، Issabel، FreePBX، Elastix، VitalPBX) از طریق AMI",
   "scripts": {
     "dev": "node --env-file=.env.local --watch server/index.js",
     "dev:web": "vite",

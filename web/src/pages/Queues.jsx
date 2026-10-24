@@ -43,7 +43,7 @@ export default function Queues() {
   if (!queues.length) return (
     <div className="space-y-4">
       <h1 className="text-lg font-bold">مانیتورینگ صف</h1>
-      <div className="card"><Empty icon="users" title="صفی پیدا نشد">صف‌ها با دستور AMI <span className="ltr">QueueStatus</span> خوانده می‌شوند. اگر در ایزابل صف (Queue) تعریف کرده‌اید، دسترسی <span className="ltr">read = agent</span> کاربر AMI را بررسی کنید.</Empty></div>
+      <div className="card"><Empty icon="users" title="صفی پیدا نشد">صف‌ها با دستور AMI <span className="ltr">QueueStatus</span> خوانده می‌شوند. اگر روی سرور (Issabel، FreePBX، …) صف (Queue) تعریف کرده‌اید، دسترسی <span className="ltr">read = agent</span> کاربر AMI را بررسی کنید.</Empty></div>
     </div>
   );
 
@@ -168,7 +168,7 @@ export default function Queues() {
           </section>
         );
       })}
-      <p className="text-xs text-ink-3">آمار «امروز» از رویدادهای AMI از زمان روشن شدن پنل جمع می‌شود؛ آمار «از reload» را خود استریسک نگه می‌دارد. اعضای ثابت (static) صف فقط از ایزابل قابل حذف‌اند.</p>
+      <p className="text-xs text-ink-3">آمار «امروز» از رویدادهای AMI از زمان روشن شدن پنل جمع می‌شود؛ آمار «از reload» را خود استریسک نگه می‌دارد. اعضای ثابت (static) صف فقط از پیکربندی خود سرور (رابط Issabel/FreePBX یا queues.conf) قابل حذف‌اند.</p>
 
       {pauseFor && <PauseDialog value={pauseFor} onClose={() => setPauseFor(null)} onDone={(reason) => { act("/api/queues/pause", { queue: pauseFor.q.name, interface: pauseFor.m.location, paused: true, reason }, `${pauseFor.m.name} متوقف شد`); setPauseFor(null); }} />}
       {addTo && <AddMember queue={addTo} peers={peers} onClose={() => setAddTo(null)} onAdd={(body) => { act("/api/queues/add", body, "اپراتور به صف اضافه شد"); setAddTo(null); }} />}

@@ -79,7 +79,7 @@ export default function Trunks() {
                     <td className="num">{t.latency != null ? `${fa(t.latency)} ms` : "—"}</td>
                     <td>{reg ? <span className={`chip ${/Registered/i.test(reg.state) ? "bg-idle-soft text-idle" : "bg-ring-soft text-ring"} ltr`}>{reg.state}</span> : <span className="text-ink-3">—</span>}</td>
                     <td className="num font-medium">{faNum(activeBy[t.name] || 0)}</td>
-                    <td>{panelNames.has(t.name) ? <span className="chip bg-accent-soft text-accent">پنل</span> : <span className="chip bg-surface-2 text-ink-3">ایزابل</span>}</td>
+                    <td>{panelNames.has(t.name) ? <span className="chip bg-accent-soft text-accent">پنل</span> : <span className="chip bg-surface-2 text-ink-3" title="ساخته‌شده در رابط یا پیکربندی خود سرور">سرور</span>}</td>
                     <td className="whitespace-nowrap text-left">
                       {can(me.user, "trunks.view") && <button className="btn btn-sm" onClick={() => qualify(t.name)}>Qualify</button>}
                       {admin && panelNames.has(t.name) && <button className="btn btn-sm mr-1" onClick={() => setEdit({ ...structuredClone(config.trunks.find((x) => x.name === t.name)), originalName: t.name })}><Icon name="edit" className="size-4" /></button>}
@@ -129,7 +129,7 @@ export default function Trunks() {
             <span className="chip bg-surface-2 text-ink-3 ltr">{config?.file || "…"}</span>
           </div>
           <div className="px-4 py-3 text-xs leading-6 text-ink-3">
-            این ترانک‌ها با دستور AMI <span className="ltr">UpdateConfig</span> در فایل بالا نوشته می‌شوند (ایزابل آن را بازنویسی نمی‌کند). ترانک‌های ساخته‌شده در رابط ایزابل در <span className="ltr">sip_additional.conf</span> هستند و اینجا فقط نمایش داده می‌شوند. پیش از هر تغییر، نسخه پشتیبان فایل در دیتابیس پنل ذخیره می‌شود.
+            این ترانک‌ها با دستور AMI <span className="ltr">UpdateConfig</span> در فایل بالا نوشته می‌شوند (رابط‌های Issabel / FreePBX آن را بازنویسی نمی‌کنند). ترانک‌های ساخته‌شده در رابط مدیریتی سرور (مثل Issabel / FreePBX) در <span className="ltr">sip_additional.conf</span> هستند و اینجا فقط نمایش داده می‌شوند. پیش از هر تغییر، نسخه پشتیبان فایل در دیتابیس پنل ذخیره می‌شود.
           </div>
           {!config ? <div className="p-6 text-center"><Spinner /></div> : config.error ? <div className="px-4 pb-4 text-sm text-talk">{config.error}</div> : (
             <table className="grid-table">

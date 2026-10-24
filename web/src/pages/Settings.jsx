@@ -55,7 +55,7 @@ function ServersAdmin() {
   return (
     <div className="card">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <span className="text-sm font-semibold">سرورهای استریسک / ایزابل</span>
+        <span className="text-sm font-semibold">سرورهای مبتنی بر استریسک (Asterisk، Issabel، FreePBX، Elastix، VitalPBX، …)</span>
         <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Icon name="plus" className="size-4" />سرور جدید</button>
       </div>
       {!list ? <div className="p-8 text-center"><Spinner /></div> : (
@@ -190,8 +190,8 @@ function AmiForm({ base, value, status, reload }) {
           {ami?.error && <div className="mt-1 text-xs text-talk">{ami.error}</div>}
         </div>
         <div className="card p-4 text-xs leading-6 text-ink-2">
-          <div className="mb-1 text-sm font-semibold text-ink">کاربر AMI در ایزابل</div>
-          در فایل <span className="ltr">/etc/asterisk/manager_custom.conf</span> اضافه کنید و سپس <span className="ltr">manager reload</span>:
+          <div className="mb-1 text-sm font-semibold text-ink">کاربر AMI روی سرور استریسک</div>
+          در فایل <span className="ltr">/etc/asterisk/manager_custom.conf</span> (Issabel / FreePBX) یا <span className="ltr">manager.conf</span> (Asterisk خام) اضافه کنید و سپس <span className="ltr">manager reload</span>:
           <pre className="mt-2 overflow-x-auto rounded-lg bg-surface-2 p-2.5 ltr text-left text-[11px] leading-5">{`[panel]
 secret = STRONG_PASSWORD
 deny = 0.0.0.0/0.0.0.0
@@ -234,13 +234,13 @@ function CdrForm({ base, value, sshUser, reload }) {
             <p className="mt-2 text-xs leading-5 text-ink-3">
               از همان نام کاربری و رمز SSH تب «مانیتورینگ سرور» همین سرور استفاده می‌شود
               {sshUser ? <> (کاربر <span className="ltr font-mono">{sshUser}</span>)</> : <b className="text-ring"> — هنوز وارد نشده است</b>}.
-              آدرس MySQL را از دید خود سرور ایزابل وارد کنید؛ معمولاً <span className="ltr font-mono">127.0.0.1</span>.
+              آدرس MySQL را از دید خود سرور استریسک وارد کنید؛ معمولاً <span className="ltr font-mono">127.0.0.1</span>.
             </p>
           )}
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label={ssh ? "آدرس MySQL روی سرور ایزابل" : "آدرس MySQL"} className="sm:col-span-2"
-            hint={ssh && v.host && !/^(127\.0\.0\.1|localhost)$/.test(v.host.trim()) ? <span className="text-ring">در حالت SSH معمولاً باید 127.0.0.1 باشد؛ MySQL ایزابل فقط روی localhost گوش می‌دهد.</span> : null}>
+          <Field label={ssh ? "آدرس MySQL روی سرور استریسک" : "آدرس MySQL"} className="sm:col-span-2"
+            hint={ssh && v.host && !/^(127\.0\.0\.1|localhost)$/.test(v.host.trim()) ? <span className="text-ring">در حالت SSH معمولاً باید 127.0.0.1 باشد؛ MySQL سرور معمولاً فقط روی localhost گوش می‌دهد.</span> : null}>
             <input className="input ltr text-left" {...bind("host")} placeholder={ssh ? "127.0.0.1" : "192.168.1.10"} />
           </Field>
           <Field label="پورت"><input className="input ltr text-left" {...bind("port")} /></Field>
@@ -258,7 +258,7 @@ function CdrForm({ base, value, sshUser, reload }) {
             ))}
           </div>
           {(v.recordings || "ssh") === "ssh" && (
-            <Field label="پوشه ضبط‌ها روی سرور" className="mt-3" hint="ایزابل: /var/spool/asterisk/monitor — فایل‌ها در زیرپوشه سال/ماه/روز جست‌وجو می‌شوند. از همان کاربر SSH تب «مانیتورینگ سرور» استفاده می‌شود.">
+            <Field label="پوشه ضبط‌ها روی سرور" className="mt-3" hint="Issabel / FreePBX / Asterisk پیش‌فرض: /var/spool/asterisk/monitor — فایل‌ها در زیرپوشه سال/ماه/روز جست‌وجو می‌شوند. از همان کاربر SSH تب «مانیتورینگ سرور» استفاده می‌شود.">
               <input className="input ltr text-left font-mono" {...bind("recordingsPath")} placeholder="/var/spool/asterisk/monitor" />
             </Field>
           )}
@@ -271,8 +271,8 @@ function CdrForm({ base, value, sshUser, reload }) {
         </div>
       </div>
       <div className="card p-4 text-xs leading-6 text-ink-2">
-        <div className="mb-1 text-sm font-semibold text-ink">کاربر فقط‌خواندنی روی ایزابل</div>
-        روی سرور ایزابل (MariaDB) اجرا کنید:
+        <div className="mb-1 text-sm font-semibold text-ink">کاربر فقط‌خواندنی دیتابیس CDR</div>
+        روی سرور استریسک (MySQL / MariaDB) اجرا کنید (نام دیتابیس در Issabel/FreePBX معمولاً asteriskcdrdb است):
         <pre className="mt-2 overflow-x-auto rounded-lg bg-surface-2 p-2.5 ltr text-left text-[11px] leading-5">{ssh ? `CREATE USER 'panel'@'localhost' IDENTIFIED BY 'PASSWORD';
 GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'localhost';
 CREATE USER 'panel'@'127.0.0.1' IDENTIFIED BY 'PASSWORD';
@@ -281,7 +281,7 @@ FLUSH PRIVILEGES;` : `CREATE USER 'panel'@'PANEL_IP' IDENTIFIED BY 'PASSWORD';
 GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'PANEL_IP';
 FLUSH PRIVILEGES;`}</pre>
         {ssh
-          ? <>برای پخش ضبط‌ها، کاربر SSH باید اجازه خواندن پوشه ضبط را داشته باشد (روی ایزابل):
+          ? <>برای پخش ضبط‌ها، کاربر SSH باید اجازه خواندن پوشه ضبط را داشته باشد (روی سرور استریسک):
             <pre className="my-2 overflow-x-auto rounded-lg bg-surface-2 p-2.5 ltr text-left text-[11px] leading-5">{`setfacl -R -m u:panelmon:rX /var/spool/asterisk/monitor
 setfacl -R -d -m u:panelmon:rX /var/spool/asterisk/monitor`}</pre>
             در حالت SSH، پورت ۳۳۰۶ بسته می‌ماند و MySQL فقط از خود سرور (localhost) پاسخ می‌دهد. کاربر SSH به دسترسی root نیاز ندارد، ولی <span className="ltr">AllowTcpForwarding</span> در <span className="ltr">sshd_config</span> نباید <span className="ltr">no</span> باشد.</>
@@ -300,14 +300,14 @@ function DialForm({ base, value, reload }) {
   return (
     <div className="card space-y-4 p-5">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="نوع کانال داخلی‌ها برای Originate" hint="Issabel با chan_sip: SIP — اگر داخلی‌ها PJSIP هستند PJSIP. حالت Local از dialplan عبور می‌کند (Follow-Me و …).">
+        <Field label="نوع کانال داخلی‌ها برای Originate" hint="داخلی‌های chan_sip: SIP — اگر داخلی‌ها PJSIP هستند PJSIP. حالت Local از dialplan عبور می‌کند (Follow-Me و …).">
           <select className="input" {...bind("tech")}><option value="SIP">SIP (chan_sip)</option><option value="PJSIP">PJSIP</option><option value="Local">Local (از طریق dialplan)</option></select>
         </Field>
-        <Field label="Context شماره‌گیری" hint="در ایزابل معمولاً from-internal"><input className="input ltr text-left" {...bind("context")} /></Field>
+        <Field label="Context شماره‌گیری" hint="در Issabel / FreePBX معمولاً from-internal"><input className="input ltr text-left" {...bind("context")} /></Field>
         <Field label="الگوی تشخیص داخلی (مثل Dialplan استریسک)" hint="چند الگو را با کاما جدا کنید: _XXX یعنی هر شماره سه‌رقمی، _1XX یعنی ۱۰۰ تا ۱۹۹، _NXXX یعنی ۲۰۰۰ تا ۹۹۹۹، _[1-3]XX، _1. — پیرهایی که با هیچ الگویی مطابقت ندارند ترانک حساب می‌شوند.">
           <input className="input ltr text-left font-mono" {...bind("extensionPattern")} placeholder="_XXX, _XXXX" />
         </Field>
-        <Field label="فایل ترانک‌های پنل" hint="باید در sip.conf اینکلود شده باشد (sip_custom.conf در ایزابل)"><input className="input ltr text-left" {...bind("trunkConfigFile")} /></Field>
+        <Field label="فایل ترانک‌های پنل" hint="باید در sip.conf اینکلود شده باشد (در Issabel / FreePBX: sip_custom.conf)"><input className="input ltr text-left" {...bind("trunkConfigFile")} /></Field>
         <Field label="آدرس فایل‌های ضبط مکالمه (اختیاری)" className="sm:col-span-2"
           hint="مثال: http://pbx.local/monitor/{date}/{recordingfile} — {date} به شکل YYYY/MM/DD و {recordingfile} از ستون CDR جایگزین می‌شود.">
           <input className="input ltr text-left" {...bind("recordingUrl")} />
@@ -613,10 +613,10 @@ function SystemForm({ base, value, amiHost, reload }) {
       </div>
       <div className="card p-4 text-xs leading-6 text-ink-2">
         <div className="mb-1 text-sm font-semibold text-ink">کدام روش؟</div>
-        <p><b>AMI:</b> بدون نصب چیزی؛ فرمان‌های فقط‌خواندنی (cat /proc، df، pidof) با تابع <span className="ltr">SHELL()</span> اجرا می‌شود. در Asterisk 12 به بعد (Issabel 4) باید در <span className="ltr">/etc/asterisk/asterisk.conf</span> بخش <span className="ltr">[options]</span> این خط باشد و استریسک ری‌استارت شود:</p>
+        <p><b>AMI:</b> بدون نصب چیزی؛ فرمان‌های فقط‌خواندنی (cat /proc، df، pidof) با تابع <span className="ltr">SHELL()</span> اجرا می‌شود. در Asterisk 12 به بعد باید در <span className="ltr">/etc/asterisk/asterisk.conf</span> بخش <span className="ltr">[options]</span> این خط باشد و استریسک ری‌استارت شود:</p>
         <pre className="my-2 rounded-lg bg-surface-2 p-2 ltr text-left">live_dangerously = yes</pre>
         <p>این تنظیم به کاربران AMI با مجوز system اجازه اجرای فرمان سیستمی می‌دهد؛ دسترسی AMI را فقط برای IP پنل باز بگذارید.</p>
-        <p className="mt-2"><b>SSH:</b> یک کاربر محدود روی سرور ایزابل بسازید (بدون sudo) و رمز یا کلید آن را اینجا وارد کنید.</p>
+        <p className="mt-2"><b>SSH:</b> یک کاربر محدود روی سرور استریسک بسازید (بدون sudo) و رمز یا کلید آن را اینجا وارد کنید.</p>
         <p className="mt-2">RAM و آپتایم استریسک در هر حالت از <span className="ltr">core show sysinfo</span> و <span className="ltr">CoreStatus</span> خوانده می‌شود.</p>
       </div>
     </div>

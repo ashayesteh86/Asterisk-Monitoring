@@ -114,7 +114,7 @@ export async function saveTrunk(ami, file, t, username, originalName, serverId) 
 export async function deleteTrunk(ami, file, name, username, serverId) {
   const existing = await listPanelTrunks(ami, file);
   const t = existing.find((e) => e.name === name);
-  if (!t) throw Object.assign(new Error("این ترانک در فایل پنل نیست (ترانک‌های ایزابل را از خود ایزابل حذف کنید)"), { status: 404 });
+  if (!t) throw Object.assign(new Error("این ترانک در فایل پنل نیست (ترانک‌های ساخته‌شده در رابط سرور را از همان‌جا حذف کنید)"), { status: 404 });
   await backup(ami, file, username, `before delete ${name}`, serverId);
   await updateConfig(ami, file, [{ action: "DelCat", cat: name }]);
   if (t.register) await updateConfig(ami, "sip.conf", [{ action: "Delete", cat: "general", var: "register", match: t.register }]);
