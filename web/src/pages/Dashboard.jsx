@@ -20,7 +20,7 @@ export default function Dashboard() {
   const [range, setRange] = useState(() => { try { return localStorage.getItem("dash.range") || "6h"; } catch { return "6h"; } });
   const [data, setData] = useState(null);
   const [summary, setSummary] = useState(null);
-  const [sys, setSys] = useState(null);
+  const liveSys = useLive((st) => st.system);
 
   useEffect(() => {
     let alive = true;
@@ -33,7 +33,6 @@ export default function Dashboard() {
   useEffect(() => {
     const load = () => {
       api("/api/dashboard/summary").then(setSummary).catch(() => {});
-      if (can(me.user, "system.view")) api("/api/system?history=0").then(setSys).catch(() => {});
     };
     load();
     const t = setInterval(load, 30000);
@@ -123,7 +122,7 @@ export default function Dashboard() {
         )}
 
         <div className="space-y-5">
-          {sys?.latest && <SystemMini s={sys.latest} />}
+          {can(me.user, "system.view") && liveSys && <SystemMini s={liveSys} />}
           {queues.length > 0 && <QueueMini queues={queues} />}
           {can(me.user, "trunks.view") && trunks.length > 0 && (
             <div className="card">
@@ -174,6 +173,16 @@ export function Meter({ label, pct, detail, warn = 75, danger = 90 }) {
   );
 }
 
+/** "live" while samples keep arriving; turns amber when the last one is old. */
+export function LiveBadge({ age }) {
+  const fresh = age <= 20;
+  return (
+    <span className={`chip ${fresh ? "bg-idle-soft text-idle" : "bg-ring-soft text-ring"}`} title={`آخرین نمونه ${fa(age)} ثانیه پیش`}>
+      <span className={`size-1.5 rounded-full ${fresh ? "animate-pulse bg-idle" : "bg-ring"}`} />{fresh ? "زنده" : `${fa(age)} ثانیه پیش`}
+    </span>
+  );
+}
+
 export const bytes = (n) => {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
   const u = ["بایت", "کیلوبایت", "مگابایت", "گیگابایت", "ترابایت"];
@@ -183,12 +192,19 @@ export const bytes = (n) => {
 };
 
 function SystemMini({ s }) {
+  const now = useNow();
+  const age = Math.max(0, Math.round((now - s.at) / 1000));
   const h = s.host;
   const mem = s.memory;
   const root = h?.disks?.find((d) => d.mount === "/") || h?.disks?.[0];
   return (
     <div className="card p-4">
-      <div className="mb-3 flex items-center"><h2 className="flex-1 text-sm font-semibold">سرور استریسک</h2><Link to="/system" className="text-xs text-accent">جزئیات ←</Link></div>
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="text-sm font-semibold">سرور استریسک</h2>
+        <LiveBadge age={age} />
+        <span className="flex-1" />
+        <Link to="/system" className="text-xs text-accent">جزئیات ←</Link>
+      </div>
       <div className="space-y-3">
         <Meter label="پردازنده (CPU)" pct={h?.cpu ?? null} detail={h?.load ? `Load: ${h.load.map((x) => x.toFixed(2)).join(" / ")}` : "از طریق AMI در دسترس نیست"} />
         <Meter label="حافظه (RAM)" pct={mem ? (mem.used / mem.total) * 100 : null} detail={mem ? `${bytes(mem.used)} از ${bytes(mem.total)}` : ""} />

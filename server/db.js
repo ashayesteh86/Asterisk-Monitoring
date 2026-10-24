@@ -138,7 +138,8 @@ export function decrypt(value) {
 // ---------- settings ----------
 export const DEFAULTS = {
   ami: { host: "", port: 5038, username: "", secret: "" },
-  cdr: { via: "direct", host: "", port: 3306, user: "", password: "", database: "asteriskcdrdb", table: "cdr" }, // via: direct | ssh
+  cdr: { via: "direct", host: "", port: 3306, user: "", password: "", database: "asteriskcdrdb", table: "cdr", // via: direct | ssh
+    recordings: "ssh", recordingsPath: "/var/spool/asterisk/monitor" }, // recordings: ssh (SFTP) | url (dial.recordingUrl) | off
   dial: {
     tech: "SIP",              // SIP | PJSIP | Local
     context: "from-internal",
@@ -152,7 +153,7 @@ export const DEFAULTS = {
   system: {
     method: "ami",            // ami (core show sysinfo + SHELL via Getvar) | ssh | off
     sshHost: "", sshPort: 22, sshUser: "", sshPassword: "", sshKey: "",
-    interval: 15,             // seconds between samples
+    interval: 5,              // seconds between samples (pushed live to dashboards)
     services: "asterisk,mysqld|mariadbd,httpd,fail2ban-server,sshd,crond",
   },
 };
@@ -213,6 +214,7 @@ function decodeServer(row) {
     for (const f of SECRET_FIELDS[k] || []) config[k][f] = decrypt(config[k][f]);
   }
   if (String(config.dial.extensionPattern).startsWith("^")) config.dial.extensionPattern = DEFAULTS.dial.extensionPattern;
+  if (Number(config.system.interval) === 15) config.system.interval = 5; // old default; dashboards are live now
   return { id: row.id, name: row.name, enabled: row.enabled, sort: row.sort, config };
 }
 

@@ -35,7 +35,7 @@ export default function Reports() {
   const { me } = useSession();
   const toast = useToast();
   const ps = useMemo(presets, []);
-  const [f, setF] = useState({ from: jString(ps[3].from), to: jString(ps[3].to), fromTime: "00:00", toTime: "23:59", direction: "", disposition: "", number: "", extension: "", minDuration: "" });
+  const [f, setF] = useState({ from: jString(ps[3].from), to: jString(ps[3].to), fromTime: "00:00", toTime: "23:59", direction: "", disposition: "", number: "", extension: "", minDuration: "", recorded: "" });
   const [applied, setApplied] = useState(f);
   const [tab, setTab] = useState("summary");
   const [stats, setStats] = useState(null);
@@ -49,7 +49,7 @@ export default function Reports() {
     const a = parseJ(x.from), b = parseJ(x.to);
     if (a) p.set("from", `${sqlDate(fromJ(a)).slice(0, 10)} ${x.fromTime || "00:00"}:00`);
     if (b) p.set("to", `${sqlDate(fromJ(b)).slice(0, 10)} ${x.toTime || "23:59"}:59`);
-    for (const k of ["direction", "disposition", "number", "extension", "minDuration"]) if (x[k]) p.set(k, x[k]);
+    for (const k of ["direction", "disposition", "number", "extension", "minDuration", "recorded"]) if (x[k]) p.set(k, x[k]);
     return p;
   };
 
@@ -101,6 +101,7 @@ export default function Reports() {
           )}
           <div className="col-span-2 flex items-end gap-2 md:col-span-4 xl:col-span-8">
             <div className="w-40"><span className="label">حداقل مدت مکالمه (ثانیه)</span><input className="input num" value={f.minDuration} onChange={set("minDuration")} inputMode="numeric" /></div>
+            <label className="mb-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={f.recorded === "1"} onChange={(e) => setF({ ...f, recorded: e.target.checked ? "1" : "" })} />فقط تماس‌های ضبط‌شده</label>
             <div className="flex-1" />
             <button className="btn btn-primary"><Icon name="search" className="size-4" />نمایش گزارش</button>
           </div>
@@ -190,7 +191,13 @@ function CallList({ data, page, setPage, pageSize }) {
   const { lookup } = useSession();
   const dial = useDial();
   const peers = useLive((s) => s.peers);
-  const [play, setPlay] = useState(null);
+  const { me } = useSession();
+  const [play, setPlay] = useState(null); // {src, row}
+  const toast = useToast();
+  const canRec = can(me.user, "reports.recordings");
+  const mode = data?.recordings || "ssh";
+  const recSrc = (r, download) => (mode === "url" ? r.recordingUrl : withServer(`/api/cdr/recording?uniqueid=${encodeURIComponent(r.uniqueid)}${download ? "&download=1" : ""}`));
+  const hasRec = (r) => canRec && mode !== "off" && (mode === "url" ? !!r.recordingUrl : r.hasRecording);
   if (!data) return <div className="card p-12 text-center"><Spinner /></div>;
   if (!data.rows.length) return <div className="card"><Empty icon="list" title="تماسی با این فیلترها پیدا نشد" /></div>;
   const pages = Math.ceil(data.total / pageSize);
@@ -205,9 +212,21 @@ function CallList({ data, page, setPage, pageSize }) {
   };
   return (
     <div className="card">
+      {play && (
+        <div className="sticky top-14 z-10 flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-3">
+          <Icon name="play" className="size-4 text-accent" />
+          <div className="min-w-0 text-sm">
+            <div className="font-medium"><span className="num ltr">{fa(play.row.src)}</span> ← <span className="num ltr">{fa(play.row.dst)}</span></div>
+            <div className="num text-xs text-ink-3">{jFromSql(play.row.calldate)} · {dur(play.row.billsec)}</div>
+          </div>
+          <audio key={play.src} src={play.src} controls autoPlay className="h-9 min-w-64 flex-1" onError={() => toast("پخش فایل ضبط ممکن نشد (فایل روی سرور نیست یا کاربر SSH اجازه خواندن ندارد)", "error")} />
+          <a className="btn btn-sm" href={recSrc(play.row, true)} download><Icon name="download" className="size-4" />دانلود</a>
+          <button className="btn btn-sm" onClick={() => setPlay(null)} aria-label="بستن"><Icon name="x" className="size-4" /></button>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="grid-table">
-          <thead><tr><th>تاریخ و ساعت</th><th>نوع</th><th>مبدأ</th><th>مقصد</th><th>وضعیت</th><th>مدت مکالمه</th><th>مدت کل</th><th>مسیر</th><th /></tr></thead>
+          <thead><tr><th>تاریخ و ساعت</th><th>نوع</th><th>مبدأ</th><th>مقصد</th><th>وضعیت</th><th>مدت مکالمه</th><th>مدت کل</th><th>مسیر</th><th>ضبط</th></tr></thead>
           <tbody>
             {data.rows.map((r, i) => {
               const d = DISP[r.disposition] || { label: r.disposition, color: "off" };
@@ -222,7 +241,14 @@ function CallList({ data, page, setPage, pageSize }) {
                   <td className="num">{r.billsec ? dur(r.billsec) : "—"}</td>
                   <td className="num text-ink-3">{dur(r.duration)}</td>
                   <td className="max-w-48 truncate text-[11px] text-ink-3 ltr text-right" title={`${r.channel} → ${r.dstchannel}`}>{r.channel.split("-")[0]} → {r.dstchannel.split("-")[0] || "—"}</td>
-                  <td>{r.recordingUrl && <button className="btn btn-sm" onClick={() => setPlay(r.recordingUrl)} aria-label="پخش ضبط"><Icon name="play" className="size-4" /></button>}</td>
+                  <td className="whitespace-nowrap">
+                    {hasRec(r) ? (
+                      <span className="flex gap-1">
+                        <button className={`btn btn-sm ${play?.row === r ? "!border-accent !bg-accent-soft !text-accent" : ""}`} onClick={() => setPlay({ src: recSrc(r), row: r })} aria-label="پخش ضبط" title="پخش"><Icon name="play" className="size-4" /></button>
+                        <a className="btn btn-sm" href={recSrc(r, true)} download aria-label="دانلود ضبط" title="دانلود"><Icon name="download" className="size-4" /></a>
+                      </span>
+                    ) : <span className="text-ink-3">—</span>}
+                  </td>
                 </tr>
               );
             })}
@@ -232,7 +258,6 @@ function CallList({ data, page, setPage, pageSize }) {
       <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3 text-sm">
         <span className="text-ink-3">{faNum(data.total)} رکورد · صفحه {faNum(page + 1)} از {faNum(pages)}</span>
         <div className="flex-1" />
-        {play && <audio src={play} controls autoPlay className="h-8" />}
         <button className="btn btn-sm" disabled={page === 0} onClick={() => setPage(page - 1)}><Icon name="chevronR" className="size-4" />قبلی</button>
         <button className="btn btn-sm" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>بعدی<Icon name="chevronL" className="size-4" /></button>
       </div>

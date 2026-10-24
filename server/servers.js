@@ -8,6 +8,8 @@ import { SystemMonitor } from "./system.js";
 import { CdrSource } from "./cdr.js";
 import { startSampler } from "./samples.js";
 import { getServer, listServers } from "./db.js";
+import { SshConnection } from "./sshpool.js";
+import { sshConfigFrom } from "./tunnel.js";
 
 export const hub = new EventEmitter();
 hub.setMaxListeners(0);
@@ -19,12 +21,14 @@ export class ServerRuntime {
     this.ami = new AmiClient();
     this.pbx = new Pbx(this.ami, () => this.cfg().dial);
     this.queues = new QueueMonitor(this.ami);
-    this.system = new SystemMonitor(this.ami, this.cfg);
+    this.ssh = new SshConnection(() => sshConfigFrom(this.cfg().system, this.cfg().ami.host));
+    this.system = new SystemMonitor(this.ami, this.cfg, this.ssh);
     this.cdr = new CdrSource(this.cfg);
     this.stopSampler = startSampler(id, this.pbx, this.queues);
     this.pbx.on("change", (item) => hub.emit("change", id, item));
     this.queues.on("change", (item) => hub.emit("change", id, item));
     this.ami.on("status", () => hub.emit("status", id));
+    this.system.on("sample", (data) => hub.emit("change", id, { type: "system", data }));
     this.apply();
   }
 
@@ -43,10 +47,12 @@ export class ServerRuntime {
     clearInterval(this.queues.timer);
     this.pbx.stop();
     this.cdr.reset();
+    this.ssh.reset();
     this.ami.configure(null);
     this.ami.removeAllListeners();
     this.pbx.removeAllListeners();
     this.queues.removeAllListeners();
+    this.system.removeAllListeners();
   }
 
   /** Short status for the server picker and overview. */

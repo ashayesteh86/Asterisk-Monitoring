@@ -74,6 +74,8 @@ function where(q) {
   }
   if (DIRECTION_SQL[q.direction]) parts.push(DIRECTION_SQL[q.direction]);
   if (q.minDuration && Number(q.minDuration) > 0) { parts.push("billsec >= ?"); args.push(Number(q.minDuration)); }
+  if (q.uniqueid) { parts.push("uniqueid = ?"); args.push(String(q.uniqueid)); }
+  if (q.recorded === "1") parts.push("recordingfile <> ''");
   if (q.hideSystem !== "0") parts.push("dst NOT IN ('h','t','i') AND lastapp NOT IN ('Hangup')");
   return { sql: parts.join(" AND "), args };
 }
@@ -146,11 +148,12 @@ export class CdrSource {
       p.query(`SELECT ${sel} FROM ${this.table()} WHERE ${sql} ORDER BY ${sort} ${dir} LIMIT ? OFFSET ?`, [...args, limit, offset]),
       p.query(`SELECT count(*) AS n FROM ${this.table()} WHERE ${sql}`, args),
     ]);
-    const tpl = this.cfg().dial.recordingUrl;
+    const tpl = this.cfg().cdr.recordings === "url" ? this.cfg().dial.recordingUrl : "";
     return {
+      recordings: this.cfg().cdr.recordings || "ssh",
       total: Number(count.n),
       rows: rows.map((r) => ({
-        ...r, direction: directionOf(r),
+        ...r, direction: directionOf(r), hasRecording: !!r.recordingfile,
         recordingUrl: tpl && r.recordingfile ? tpl.replace("{recordingfile}", encodeURIComponent(r.recordingfile))
           .replace("{date}", String(r.calldate).slice(0, 10).replace(/-/g, "/")) : "",
       })),
@@ -196,6 +199,14 @@ export class CdrSource {
       byExtension: [...exts.values()].sort((a, b) => b.inTotal + b.outTotal - a.inTotal - a.outTotal),
       topNumbers: topNumbers.map(num),
     };
+  }
+
+  /** The recording file name and call date of one CDR row the caller may see (q already scoped). */
+  async recording(q) {
+    if (!(await this.columns()).has("recordingfile")) return null;
+    const { sql, args } = where({ ...q, recorded: "1" });
+    const [rows] = await (await this.pool()).query(`SELECT calldate, recordingfile FROM ${this.table()} WHERE ${sql} LIMIT 1`, args);
+    return rows[0] || null;
   }
 
   /** Rows for CSV export (max 50k). */

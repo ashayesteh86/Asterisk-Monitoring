@@ -205,7 +205,7 @@ write = system,call,agent,user,config,command,reporting,originate`}</pre>
 }
 
 function CdrForm({ base, value, sshUser, reload }) {
-  const [v, , bind] = useForm({ via: "direct", ...value, password: "" });
+  const [v, , bind] = useForm({ via: "direct", recordings: "ssh", recordingsPath: "/var/spool/asterisk/monitor", ...value, password: "" });
   const [r, setR] = useState(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -249,6 +249,21 @@ function CdrForm({ base, value, sshUser, reload }) {
           <Field label="دیتابیس"><input className="input ltr text-left" {...bind("database")} /></Field>
           <Field label="جدول"><input className="input ltr text-left" {...bind("table")} /></Field>
         </div>
+        <div className="rounded-xl border border-line p-3">
+          <span className="label">فایل‌های ضبط مکالمه</span>
+          <div className="flex flex-wrap gap-2">
+            {[["ssh", "از طریق SSH (پیشنهادی)"], ["url", "آدرس وب"], ["off", "نمایش داده نشود"]].map(([k, l]) => (
+              <button key={k} type="button" onClick={() => bind("recordings").onChange({ target: { value: k } })}
+                className={`btn btn-sm ${(v.recordings || "ssh") === k ? "!border-accent !bg-accent-soft !text-accent" : ""}`}>{l}</button>
+            ))}
+          </div>
+          {(v.recordings || "ssh") === "ssh" && (
+            <Field label="پوشه ضبط‌ها روی سرور" className="mt-3" hint="ایزابل: /var/spool/asterisk/monitor — فایل‌ها در زیرپوشه سال/ماه/روز جست‌وجو می‌شوند. از همان کاربر SSH تب «مانیتورینگ سرور» استفاده می‌شود.">
+              <input className="input ltr text-left font-mono" {...bind("recordingsPath")} placeholder="/var/spool/asterisk/monitor" />
+            </Field>
+          )}
+          {v.recordings === "url" && <p className="mt-2 text-xs text-ink-3">آدرس الگو را در تب «شماره‌گیری و شنود» (آدرس فایل‌های ضبط) وارد کنید.</p>}
+        </div>
         <Result r={r} />
         <div className="flex gap-2">
           <button className="btn" onClick={test} disabled={busy || (!ssh && !v.host)}>{busy ? <Spinner className="size-4" /> : <Icon name="pulse" className="size-4" />}تست اتصال</button>
@@ -266,7 +281,10 @@ FLUSH PRIVILEGES;` : `CREATE USER 'panel'@'PANEL_IP' IDENTIFIED BY 'PASSWORD';
 GRANT SELECT ON asteriskcdrdb.* TO 'panel'@'PANEL_IP';
 FLUSH PRIVILEGES;`}</pre>
         {ssh
-          ? <>در حالت SSH، پورت ۳۳۰۶ بسته می‌ماند و MySQL فقط از خود سرور (localhost) پاسخ می‌دهد. کاربر SSH به دسترسی root نیاز ندارد، ولی <span className="ltr">AllowTcpForwarding</span> در <span className="ltr">sshd_config</span> نباید <span className="ltr">no</span> باشد.</>
+          ? <>برای پخش ضبط‌ها، کاربر SSH باید اجازه خواندن پوشه ضبط را داشته باشد (روی ایزابل):
+            <pre className="my-2 overflow-x-auto rounded-lg bg-surface-2 p-2.5 ltr text-left text-[11px] leading-5">{`setfacl -R -m u:panelmon:rX /var/spool/asterisk/monitor
+setfacl -R -d -m u:panelmon:rX /var/spool/asterisk/monitor`}</pre>
+            در حالت SSH، پورت ۳۳۰۶ بسته می‌ماند و MySQL فقط از خود سرور (localhost) پاسخ می‌دهد. کاربر SSH به دسترسی root نیاز ندارد، ولی <span className="ltr">AllowTcpForwarding</span> در <span className="ltr">sshd_config</span> نباید <span className="ltr">no</span> باشد.</>
           : <>و در <span className="ltr">/etc/my.cnf</span> مقدار <span className="ltr">bind-address</span> را طوری تنظیم کنید که از سرور پنل در دسترس باشد (پورت ۳۳۰۶ را فقط برای IP پنل در فایروال باز کنید).</>}
       </div>
     </div>
@@ -608,7 +626,7 @@ function SystemForm({ base, value, amiHost, reload }) {
 const ACTIONS = { login: "ورود", originate: "تماس (Click-to-Dial)", hangup: "قطع تماس", transfer: "انتقال تماس", "spy:listen": "شنود", "spy:whisper": "نجوا", "spy:barge": "ورود به مکالمه",
   "trunk:create": "ایجاد ترانک", "trunk:update": "ویرایش ترانک", "trunk:delete": "حذف ترانک", reload: "بارگذاری مجدد", "settings:ami": "تنظیم AMI", "settings:cdr": "تنظیم CDR",
   "settings:dial": "تنظیم شماره‌گیری", "settings:system": "تنظیم مانیتورینگ سرور", "group:create": "ایجاد گروه", "group:update": "ویرایش گروه", "group:delete": "حذف گروه",
-  "server:create": "افزودن سرور", "server:update": "ویرایش سرور", "server:delete": "حذف سرور", "queue:QueuePause": "توقف/ادامه اپراتور صف", "queue:QueueAdd": "افزودن به صف", "queue:QueueRemove": "حذف از صف", "user:create": "ایجاد کاربر", "user:update": "ویرایش کاربر", "user:delete": "حذف کاربر", "contacts:import": "ورود مخاطبین" };
+  "recording:listen": "گوش دادن به ضبط", "recording:download": "دانلود ضبط", "server:create": "افزودن سرور", "server:update": "ویرایش سرور", "server:delete": "حذف سرور", "queue:QueuePause": "توقف/ادامه اپراتور صف", "queue:QueueAdd": "افزودن به صف", "queue:QueueRemove": "حذف از صف", "user:create": "ایجاد کاربر", "user:update": "ویرایش کاربر", "user:delete": "حذف کاربر", "contacts:import": "ورود مخاطبین" };
 function Audit() {
   const { servers } = useSession();
   const [list, setList] = useState(null);
@@ -620,7 +638,7 @@ function Audit() {
         <span className="text-sm font-semibold">رخدادهای ثبت‌شده</span>
         <div className="flex-1" />
         <select className="input w-auto py-1" value={filter} onChange={(e) => setFilter(e.target.value)}>
-          <option value="">همه</option><option value="spy">فقط شنود</option><option value="originate">تماس‌ها</option><option value="trunk">ترانک‌ها</option><option value="settings">تنظیمات</option><option value="group">گروه‌ها</option><option value="user">کاربران</option><option value="queue">صف‌ها</option><option value="hangup">قطع تماس</option><option value="login">ورودها</option>
+          <option value="">همه</option><option value="spy">فقط شنود</option><option value="originate">تماس‌ها</option><option value="trunk">ترانک‌ها</option><option value="settings">تنظیمات</option><option value="group">گروه‌ها</option><option value="user">کاربران</option><option value="queue">صف‌ها</option><option value="hangup">قطع تماس</option><option value="recording">ضبط مکالمه</option><option value="login">ورودها</option>
         </select>
       </div>
       {!list ? <div className="p-8 text-center"><Spinner /></div> : (

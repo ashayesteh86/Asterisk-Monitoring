@@ -74,10 +74,11 @@ const sysinfoNum = (lines, label) => {
 };
 
 export class SystemMonitor extends EventEmitter {
-  constructor(ami, cfg) {
+  constructor(ami, cfg, ssh) {
     super();
     this.ami = ami;
     this.cfg = cfg; // () => {ami, system, …} for this PBX
+    this.ssh = ssh; // shared SshConnection for this PBX
     this.latest = null;
     this.history = [];
     this.lastError = "";
@@ -90,7 +91,7 @@ export class SystemMonitor extends EventEmitter {
     clearInterval(this.timer);
     const s = this.cfg().system;
     if (s.method === "off") return;
-    const sec = Math.min(Math.max(Number(s.interval) || 15, 5), 300);
+    const sec = Math.min(Math.max(Number(s.interval) || 5, 3), 300);
     this.timer = setInterval(() => this.sample().catch(() => {}), sec * 1000);
     setTimeout(() => this.sample().catch(() => {}), 2000);
   }
@@ -104,7 +105,7 @@ export class SystemMonitor extends EventEmitter {
   async hostMetrics() {
     const s = this.cfg().system;
     const script = metricsScript(this.services());
-    if (s.method === "ssh") return parseMetrics(await sshExec(s, this.cfg().ami.host, script.replace(" | tr '\\n' ';'", "")), this.services());
+    if (s.method === "ssh") return parseMetrics(await this.ssh.exec(script.replace(" | tr '\\n' ';'", "")), this.services());
     if (s.method !== "ami") return null;
     const r = await this.ami.action({ Action: "Getvar", Variable: `SHELL(${script})` }, 15000);
     if (r.Response !== "Success" || !r.Value) {

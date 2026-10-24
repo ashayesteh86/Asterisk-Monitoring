@@ -3,22 +3,33 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { useSession, can } from "../session.jsx";
-import { useLive } from "../live.js";
+import { useLive, useNow } from "../live.js";
 import { fa, faNum, durLong, jFromSql } from "../jalali.js";
 import { Icon, Spinner, Empty } from "../components/ui.jsx";
 import LineChart, { hhmm } from "../components/LineChart.jsx";
-import { Meter, bytes } from "./Dashboard.jsx";
+import { Meter, bytes, LiveBadge } from "./Dashboard.jsx";
 
 export default function SystemPage() {
   const { me } = useSession();
   const ami = useLive((s) => s.ami);
+  const live = useLive((s) => s.system);
+  const now = useNow();
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
   const load = (refresh) => { setBusy(true); return api(`/api/system${refresh ? "?refresh=1" : ""}`).then(setD).catch(() => {}).finally(() => setBusy(false)); };
-  useEffect(() => { load(); const t = setInterval(() => load(), 15000); return () => clearInterval(t); }, []);
+  useEffect(() => { load(); }, []);
+  // live samples arrive over the WebSocket; keep the 6-hour history growing from them
+  useEffect(() => {
+    if (!live || !d) return;
+    setD((o) => {
+      if (!o || o.history.some((x) => x.at === live.at)) return o.latest?.at === live.at ? o : { ...o, latest: live };
+      const point = { at: live.at, cpu: live.host?.cpu ?? null, mem: live.memory ? Math.round((live.memory.used / live.memory.total) * 1000) / 10 : null, load: live.host?.load?.[0] ?? null };
+      return { latest: live, history: [...o.history.filter((x) => x.at > live.at - 6 * 3600e3), point] };
+    });
+  }, [live?.at, !!d]);
 
   if (!d) return <div className="p-12 text-center"><Spinner /></div>;
-  const s = d.latest;
+  const s = live && (!d.latest || live.at >= d.latest.at) ? live : d.latest;
   if (!s) return <div className="card"><Empty icon="server" title="هنوز اطلاعاتی از سرور دریافت نشده" /></div>;
   const h = s.host;
   const a = s.asterisk || {};
@@ -29,7 +40,8 @@ export default function SystemPage() {
         <h1 className="text-lg font-bold">وضعیت سرور استریسک</h1>
         {h?.host && <span className="chip bg-surface-2 text-ink-2 ltr">{h.host}</span>}
         <div className="flex-1" />
-        <span className="text-xs text-ink-3">آخرین نمونه: <span className="num">{hhmm(s.at)}</span> · روش: {s.method === "ssh" ? "SSH" : s.method === "ami" ? "AMI" : "خاموش"}</span>
+        <LiveBadge age={Math.max(0, Math.round((now - s.at) / 1000))} />
+        <span className="text-xs text-ink-3">آخرین نمونه: <span className="num">{fa(new Date(s.at).toTimeString().slice(0, 8))}</span> · روش: {s.method === "ssh" ? "SSH" : s.method === "ami" ? "AMI" : "خاموش"}</span>
         <button className="btn btn-sm" onClick={() => load(true)} disabled={busy}>{busy ? <Spinner className="size-4" /> : <Icon name="refresh" className="size-4" />}به‌روزرسانی</button>
       </div>
 

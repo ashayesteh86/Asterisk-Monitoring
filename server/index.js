@@ -15,6 +15,7 @@ import { testCdr } from "./cdr.js";
 import { hub, runtimes, runtime, startAll, addRuntime, removeRuntime } from "./servers.js";
 import { listPanelTrunks, saveTrunk, deleteTrunk, getConfig } from "./trunks.js";
 import { normalizeNumber, parseCsv, toCsv, checkDialplanList } from "./util.js";
+import { recordingPaths, AUDIO_TYPES } from "./recordings.js";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 for (const k of ["DATABASE_URL", "APP_SECRET"]) if (!process.env[k]) { console.error(`${k} is not set`); process.exit(1); }
@@ -109,7 +110,7 @@ function serverCard(id) {
   const s = getServer(id);
   const d = s.config.dial;
   return { id, name: s.name, enabled: s.enabled, ami: rt.ami.info(),
-    dial: { tech: d.tech, context: d.context, hideLocal: d.hideLocal, recordingUrl: !!d.recordingUrl } };
+    dial: { tech: d.tech, context: d.context, hideLocal: d.hideLocal, recordingUrl: !!d.recordingUrl }, recordings: s.config.cdr.recordings || "ssh" };
 }
 
 app.put("/api/me/password", wrap(async (req, res) => {
@@ -372,6 +373,45 @@ app.get("/api/cdr/export.csv", requirePerm("reports.export"), wrap(async (req, r
   res.setHeader("Content-Disposition", `attachment; filename="cdr-report-${req.srv.id}.csv"`);
   res.send("﻿" + toCsv([["تاریخ شمسی", "تاریخ میلادی", "نوع", "مبدأ", "مقصد", "Caller ID", "وضعیت", "مدت کل (ثانیه)", "مدت مکالمه (ثانیه)", "کانال", "کانال مقصد", "شناسه"], ...data]));
 }));
+// Call recordings, read from the PBX over SFTP (the server's monitoring SSH account), with HTTP Range for seeking.
+app.get("/api/cdr/recording", requirePerm("reports.recordings"), wrap(async (req, res) => {
+  const uid = String(req.query.uniqueid || "");
+  if (!/^[\w.-]{1,64}$/.test(uid)) return res.status(400).json({ error: "شناسه تماس نامعتبر است" });
+  const cfg = req.srv.cfg().cdr;
+  if ((cfg.recordings || "ssh") !== "ssh") return res.status(400).json({ error: "دریافت فایل ضبط از طریق SSH برای این سرور فعال نیست" });
+  const row = await req.srv.cdr.recording(scopeCdr({ user: req.user, srv: req.srv, query: { uniqueid: uid, hideSystem: "0" } }));
+  if (!row) return res.status(404).json({ error: "برای این تماس فایل ضبطی ثبت نشده یا در محدوده دسترسی شما نیست" });
+  const paths = recordingPaths(cfg.recordingsPath || "/var/spool/asterisk/monitor", row.recordingfile, row.calldate);
+  if (!paths.length) return res.status(400).json({ error: "نام فایل ضبط نامعتبر است" });
+  const sftp = await req.srv.ssh.sftp();
+  let found = null;
+  for (const p of paths) {
+    found = await new Promise((resolve) => sftp.stat(p, (err, st) => resolve(err ? null : { path: p, size: st.size })));
+    if (found) break;
+  }
+  if (!found) return res.status(404).json({ error: `فایل ضبط روی سرور پیدا نشد یا کاربر SSH اجازه خواندن آن را ندارد (${paths[0]})` });
+  const ext = found.path.split(".").pop().toLowerCase();
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+  let start = 0, end = found.size - 1;
+  if (range && (range[1] || range[2])) {
+    if (range[1]) { start = Number(range[1]); if (range[2]) end = Math.min(Number(range[2]), end); }
+    else start = Math.max(0, found.size - Number(range[2]));
+    if (start > end || start >= found.size) { res.setHeader("Content-Range", `bytes */${found.size}`); return res.status(416).end(); }
+    res.status(206).setHeader("Content-Range", `bytes ${start}-${end}/${found.size}`);
+  }
+  res.setHeader("Content-Type", AUDIO_TYPES[ext] || "application/octet-stream");
+  res.setHeader("Content-Length", end - start + 1);
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Cache-Control", "private, max-age=300");
+  const name = found.path.split("/").pop();
+  if (req.query.download === "1") res.setHeader("Content-Disposition", `attachment; filename="${name.replace(/"/g, "")}"`);
+  if (start === 0) await audit(req, req.query.download === "1" ? "recording:download" : "recording:listen", name, { uniqueid: uid });
+  const stream = sftp.createReadStream(found.path, { start, end });
+  stream.on("error", () => res.destroy());
+  req.on("close", () => stream.destroy());
+  stream.pipe(res);
+}));
+
 /** Limit CDR to the extensions the user's "reports" scope allows (resolved against the PBX's extension list). */
 function scopeCdr(req) {
   const q = { ...req.query };
@@ -458,6 +498,8 @@ app.put("/api/servers/:id/:section", requirePerm("settings.manage"), wrap(async 
   const body = { ...req.body };
   for (const f of ["status", "secretSet", "passwordSet", "sshPasswordSet", "sshKeySet"]) delete body[f];
   if (k === "cdr" && body.via && !["direct", "ssh"].includes(body.via)) return res.status(400).json({ error: "نوع اتصال نامعتبر" });
+  if (k === "cdr" && body.recordings && !["ssh", "url", "off"].includes(body.recordings)) return res.status(400).json({ error: "روش ضبط نامعتبر" });
+  if (k === "cdr" && body.recordingsPath !== undefined && !/^\/[\w./-]*$/.test(body.recordingsPath)) return res.status(400).json({ error: "مسیر فایل‌های ضبط باید مسیر مطلق باشد (مثل /var/spool/asterisk/monitor)" });
   if (k === "system") {
     if (body.method && !["ami", "ssh", "off"].includes(body.method)) return res.status(400).json({ error: "روش نامعتبر" });
     if (body.services !== undefined && !/^[\w.|, -]*$/.test(body.services)) return res.status(400).json({ error: "نام سرویس‌ها فقط حروف انگلیسی، عدد و | ," });
@@ -473,6 +515,7 @@ app.put("/api/servers/:id/:section", requirePerm("settings.manage"), wrap(async 
   if (k === "ami") rt.apply();
   if (k === "cdr" || k === "system" || k === "ami") rt.cdr.reset();
   if (k === "dial") rt.pbx.reclassify();
+  if (k === "system" || k === "ami") rt.ssh.reset();
   if (k === "system") rt.system.schedule();
   req.srv = rt;
   await audit(req, `settings:${k}`, s.name);
@@ -690,6 +733,7 @@ function snapshotFor(srv, user, idx = callIndex(srv)) {
     registrations: trunks ? snap.registrations : [],
     dahdi: trunks ? snap.dahdi : [],
     queues: queueView(user, srv.queues.queues),
+    system: can(user, "system.view") ? srv.system.latest : null,
   };
 }
 
@@ -766,6 +810,7 @@ function flush() {
           case "channelDel": if (ws.sent.delete(it.name)) out.push(it); break;
           case "registrations": case "dahdi": if (can(u, "trunks.view")) out.push(it); break;
           case "queues": out.push({ type: "queues", data: queueView(u, it.data) }); break;
+          case "system": if (can(u, "system.view")) out.push(it); break;
           default: out.push(it);
         }
       }
