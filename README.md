@@ -63,7 +63,7 @@ git clone git@github.com:ashayesteh86/Asterisk-Monitoring.git /opt/mahanasterisk
 sudo /opt/mahanasterisk/scripts/mahan-panel.sh install
 ```
 
-اگر Docker نصب نباشد، با تأیید شما نصب می‌شود؛ `panel.env` و `.env` با رمزهای تصادفی ساخته می‌شوند، کانتینرها بالا می‌آیند و آدرس و رمز اولیه admin چاپ می‌شود. گزینه‌ها: `--port 3400`، `--dir /opt/mahanasterisk`، `--key ~/.ssh/deploy_key`، `--branch main`، `-y` (بدون سؤال).
+اگر Docker نصب نباشد، با تأیید شما نصب می‌شود (فقط این مرحله root لازم دارد؛ کاربر عضو گروه docker بقیه کارها را بدون sudo انجام می‌دهد)؛ `panel.env` و `.env` با رمزهای تصادفی ساخته می‌شوند، کانتینرها بالا می‌آیند و آدرس و رمز اولیه admin چاپ می‌شود. گزینه‌ها: `--port 3400`، `--tz Asia/Tehran` (باید با منطقه زمانی سرور استریسک یکی باشد)، `--dir /opt/mahanasterisk`، `--key ~/.ssh/deploy_key`، `--branch main`، `-y` (بدون سؤال).
 
 | دستور | کار |
 |---|---|

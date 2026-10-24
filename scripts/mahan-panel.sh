@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # MahanAsterisk Monitoring — install / update / backup helper (Docker).
 #
-#   sudo ./mahan-panel.sh install [--dir /opt/mahanasterisk] [--port 3400] [--repo URL] [--key ~/.ssh/key] [--branch main] [-y]
+#   sudo ./mahan-panel.sh install [--dir /opt/mahanasterisk] [--port 3400] [--tz Asia/Tehran] [--repo URL] [--key ~/.ssh/key] [--branch main] [-y]
 #   sudo ./mahan-panel.sh update  [--dir …]          pull, back up the DB, rebuild, health-check, roll back on failure
 #   sudo ./mahan-panel.sh backup  [--dir …]          database dump into <dir>/backups (keeps the newest 14)
 #   sudo ./mahan-panel.sh restore <file.dump> [--dir …]
 #   sudo ./mahan-panel.sh status | logs | restart | admin-password [--dir …]
+#
+# Root is only needed to install Docker; a user in the "docker" group can run everything else.
+# --tz should match the PBX's time zone (it decides "today" in reports and the dashboard).
 #
 # Settings for later runs (repo key, branch) are kept in <dir>/.mahan-panel.conf.
 set -euo pipefail
@@ -15,6 +18,7 @@ PORT="3400"
 REPO="git@github.com:ashayesteh86/Asterisk-Monitoring.git"
 KEY=""
 BRANCH="main"
+TZ_NAME=""
 YES=0
 COMPOSE_FILE="compose.production.yml"
 IMAGE="asterisk-panel:production"
@@ -27,7 +31,7 @@ ok()   { echo "${c_grn}✔${c_off} $*"; }
 warn() { echo "${c_yel}!${c_off} $*" >&2; }
 die()  { echo "${c_red}✘ $*${c_off}" >&2; exit 1; }
 
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 CMD="${1:-}"; [ -n "$CMD" ] || usage 1; shift || true
 ARG=""
@@ -40,6 +44,7 @@ parse() {
       --repo) REPO="$2"; shift 2 ;;
       --key) KEY="$2"; shift 2 ;;
       --branch) BRANCH="$2"; shift 2 ;;
+      --tz) TZ_NAME="$2"; shift 2 ;;
       -y|--yes) YES=1; shift ;;
       -h|--help) usage 0 ;;
       -*) die "unknown option: $1" ;;
@@ -52,7 +57,9 @@ parse "$@"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "$DIR_SET" -eq 0 ] && [ -f "$HERE/$COMPOSE_FILE" ]; then DIR="$HERE"; fi
 
-[ "$(id -u)" -eq 0 ] || die "run as root (sudo $0 $CMD …)"
+if [ "$(id -u)" -ne 0 ] && ! docker info >/dev/null 2>&1; then
+  die "run as root (sudo $0 $CMD …) or as a user in the docker group"
+fi
 CONF="$DIR/.mahan-panel.conf"
 # saved settings first, then this command line wins again
 # shellcheck disable=SC1090
@@ -74,6 +81,7 @@ compose() { (cd "$DIR" && docker compose -f "$COMPOSE_FILE" "$@"); }
 
 need_docker() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then return; fi
+  [ "$(id -u)" -eq 0 ] || die "Docker with the compose plugin is not installed — run this once as root to install it"
   warn "Docker with the compose plugin is not installed."
   confirm "Install Docker now from get.docker.com?" || die "install Docker first: https://docs.docker.com/engine/install/"
   curl -fsSL https://get.docker.com | sh
@@ -137,7 +145,7 @@ cmd_install() {
 APP_SECRET=$(rand 32)
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=$pass
-TZ=$(timedatectl show -p Timezone --value 2>/dev/null || echo Asia/Tehran)
+TZ=${TZ_NAME:-$(timedatectl show -p Timezone --value 2>/dev/null || echo Asia/Tehran)}
 EOF
     ok "created panel.env (keep APP_SECRET safe: stored PBX passwords are encrypted with it)"
   fi
@@ -165,8 +173,8 @@ EOF
   if [ "$first" -eq 1 ]; then
     echo "   login:    admin / $pass   (change it after the first login)"
   fi
-  echo "   update:   sudo $DIR/scripts/mahan-panel.sh update --dir $DIR"
-  echo "   backup:   sudo $DIR/scripts/mahan-panel.sh backup --dir $DIR"
+  echo "   update:   $DIR/scripts/mahan-panel.sh update --dir $DIR"
+  echo "   backup:   $DIR/scripts/mahan-panel.sh backup --dir $DIR"
   echo
   echo "Next: Settings › Asterisk servers › New server, then allow this server's IP in the PBX's AMI 'permit' line."
 }
