@@ -73,6 +73,15 @@ sudo /opt/mahanasterisk/scripts/mahan-panel.sh install
 | `sudo …/mahan-panel.sh status` / `logs` / `restart` | وضعیت، لاگ زنده، ری‌استارت |
 | `sudo …/mahan-panel.sh admin-password` | رمز جدید تصادفی برای کاربر admin (اگر رمز فراموش شد) |
 
+**به‌روزرسانی بدون دسترسی GitHub:** اگر سرور مقصد به GitHub دسترسی ندارد، یک مخزن bare روی همان سرور بسازید و از سرور توسعه به آن push کنید؛ `update` از همان مخزن pull می‌کند:
+
+```bash
+# روی سرور مقصد (یک بار)
+git init --bare -b main ~/mahanasterisk.git && git -C ~/mahanasterisk remote set-url origin ~/mahanasterisk.git
+# روی سرور توسعه، برای هر انتشار
+git push production main   # remote: user@server:mahanasterisk.git
+```
+
 `APP_SECRET` در `panel.env` را نگه دارید و عوض نکنید؛ رمزهای AMI / MySQL / SSH سرورها با آن رمزنگاری شده‌اند.
 
 ## چند سرور
